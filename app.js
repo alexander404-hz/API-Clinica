@@ -1,15 +1,16 @@
-const { log } = require("console");
 const express = require("express");
 const app = express();
 const fs = require("fs");
 const path = require("path");
-const { json } = require("stream/consumers");
+const validateUser = require("./validators/userValidator");
+const LoggerMiddleware = require("./middlewares/logger");
 
 const PORT = process.env.PORT || 3005;
 const usersFilePath = path.join(__dirname, "users.json");
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(LoggerMiddleware);
 
 app.get("/", (req, res) => {
   res.send(`<h1>Curso Express</h1>
@@ -58,89 +59,7 @@ app.post("/users", (req, res) => {
         .json({ error: "El archivo de usuarios no es valido" });
     }
 
-    const errors = [];
-    const requiredFields = ["id", "name", "email"];
-
-    for (const field of requiredFields) {
-      if (newUser[field] === undefined || newUser[field] === null) {
-        errors.push(`El campo ${field} es obligatorio`);
-      }
-    }
-
-    if (
-      newUser.id !== undefined &&
-      newUser.id !== null &&
-      (!Number.isInteger(newUser.id) || newUser.id <= 0)
-    ) {
-      errors.push("El id debe ser un numero entero positivo");
-    } else if (
-      newUser.id !== undefined &&
-      newUser.id !== null &&
-      users.some((user) => user.id === newUser.id)
-    ) {
-      errors.push("El id ya existe");
-    }
-
-    if (
-      newUser.name !== undefined &&
-      newUser.name !== null &&
-      (typeof newUser.name !== "string" || newUser.name.trim().length < 2)
-    ) {
-      errors.push("El name debe ser un texto de al menos 2 caracteres");
-    }
-
-    if (
-      newUser.username !== undefined &&
-      (typeof newUser.username !== "string" ||
-        !/^[a-zA-Z0-9_]{3,20}$/.test(newUser.username))
-    ) {
-      errors.push(
-        "El username debe tener entre 3 y 20 caracteres alfanumericos o guion bajo",
-      );
-    } else if (
-      newUser.username !== undefined &&
-      users.some((user) => user.username === newUser.username)
-    ) {
-      errors.push("El username ya existe");
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (
-      newUser.email !== undefined &&
-      newUser.email !== null &&
-      (typeof newUser.email !== "string" || !emailRegex.test(newUser.email))
-    ) {
-      errors.push("El email no tiene un formato valido");
-    } else if (
-      newUser.email !== undefined &&
-      newUser.email !== null &&
-      users.some(
-        (user) => user.email.toLowerCase() === newUser.email.toLowerCase(),
-      )
-    ) {
-      errors.push("El email ya existe");
-    }
-
-    if (
-      newUser.role !== undefined &&
-      !["admin", "editor", "user", "viewer"].includes(newUser.role)
-    ) {
-      errors.push("El role debe ser admin, editor, user o viewer");
-    }
-
-    if (
-      newUser.is_active !== undefined &&
-      typeof newUser.is_active !== "boolean"
-    ) {
-      errors.push("El is_active debe ser true o false");
-    }
-
-    if (
-      newUser.created_at !== undefined &&
-      Number.isNaN(Date.parse(newUser.created_at))
-    ) {
-      errors.push("El created_at debe ser una fecha valida");
-    }
+    const errors = validateUser(users, newUser, ["id", "name", "email"]);
 
     if (errors.length > 0) {
       return res.status(400).json({ errors });
@@ -164,17 +83,31 @@ app.post("/users", (req, res) => {
 
 // UPDATE
 
-app.put("/users/:id", (req, res) => {
-  const userId = parseInt(req.params.id, 10);
-  const updatedUSer = req.body;
+function updateUser(req, res, requiredFields, replaceUser) {
+  const userId = Number(req.params.id);
+  const updatedUser = req.body;
+
+  if (
+    !/^\d+$/.test(req.params.id) ||
+    !Number.isInteger(userId) ||
+    userId <= 0
+  ) {
+    return res
+      .status(400)
+      .json({ error: "El id debe ser un numero entero positivo" });
+  }
+
+  if (!updatedUser || Object.keys(updatedUser).length === 0) {
+    return res.status(400).json({ error: "No se recibieron datos" });
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updatedUser, "id")) {
+    return res.status(400).json({ error: "El id no se puede modificar" });
+  }
 
   fs.readFile(usersFilePath, "utf-8", (err, data) => {
     if (err) {
       return res.status(500).json({ error: "Error con conexion de datos." });
-    }
-
-    if (!updatedUSer || Object.keys(updatedUSer).length === 0) {
-      return res.status(400).json({ error: "No se recibieron datos" });
     }
 
     let users;
@@ -186,13 +119,28 @@ app.put("/users/:id", (req, res) => {
         .json({ error: "El archivo de usuarios no es valido" });
     }
 
-    console.log(users);
+    const userIndex = users.findIndex((user) => user.id === userId);
+
+    if (userIndex === -1) {
+      return res.status(404).json({ error: "El usuario no existe" });
+    }
+
+    const currentUser = users[userIndex];
+    const errors = validateUser(users, updatedUser, requiredFields, userId);
+
+    if (errors.length > 0) {
+      return res.status(400).json({ errors });
+    }
+
+    const updatedUserData = replaceUser
+      ? { id: userId, ...updatedUser }
+      : { ...currentUser, ...updatedUser };
 
     users = users.map((user) =>
-      user.id === userId ? { ...user, ...updatedUSer } : user,
+      user.id === userId ? { ...user, ...updatedUserData } : user,
     );
 
-    console.log(users);
+    users[userIndex] = updatedUserData;
 
     const usersJSON = JSON.stringify(users, null, 2);
 
@@ -203,14 +151,75 @@ app.put("/users/:id", (req, res) => {
           .json({ error: "Error al actualizar el usuario" });
       }
 
-      res
-        .status(201)
-        .json({ message: "Usuario actualizado correctamente", updatedUSer });
+      res.status(200).json({
+        message: "Usuario actualizado correctamente",
+        updatedUser: updatedUserData,
+      });
+    });
+  });
+}
+
+app.put("/users/:id", (req, res) => {
+  updateUser(
+    req,
+    res,
+    ["name", "username", "email", "role", "is_active", "created_at"],
+    true,
+  );
+});
+
+app.patch("/users/:id", (req, res) => {
+  updateUser(req, res, [], false);
+});
+
+// DELETE
+
+app.delete("/users/:id", (req, res) => {
+  const userId = Number(req.params.id);
+
+  if (
+    !/^\d+$/.test(req.params.id) ||
+    !Number.isInteger(userId) ||
+    userId <= 0
+  ) {
+    return res
+      .status(400)
+      .json({ error: "El id debe ser un numero entero positivo" });
+  }
+
+  fs.readFile(usersFilePath, (err, data) => {
+    if (err) {
+      return res.status(500).json({ error: "Error con conexion de datos." });
+    }
+
+    let users;
+    try {
+      users = JSON.parse(data);
+    } catch (parseError) {
+      return res
+        .status(500)
+        .json({ error: "El archivo de usuarios no es valido" });
+    }
+
+    const userIndex = users.findIndex((user) => user.id === userId);
+
+    if (userIndex === -1) {
+      return res.status(404).json({ error: "El usuario no existe" });
+    }
+
+    users = users.filter((user) => user.id !== userId);
+
+    const usersJSON = JSON.stringify(users, null, 2);
+
+    fs.writeFile(usersFilePath, usersJSON, (err) => {
+      if (err) {
+        return res.status(500).json({ error: "Error al eliminar el usuario" });
+      }
+
+      res.status(204).send();
     });
   });
 });
-
-// ELIMNATE
 
 // OTROS...
 
