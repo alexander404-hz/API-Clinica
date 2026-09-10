@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const validateUser = require("./validators/userValidator");
 const LoggerMiddleware = require("./middlewares/logger");
+const errorHandler = require("./middlewares/errorHandler");
 
 const PORT = process.env.PORT || 3005;
 const usersFilePath = path.join(__dirname, "users.json");
@@ -249,6 +250,12 @@ app.post("/api/data", (req, res) => {
 
   res.status(201).json({ message: "Datos JSON recibidos", data });
 });
+
+app.get("/error", (req, res, next) => {
+  next(new Error("Error Intencional"));
+});
+
+app.use(errorHandler);
 
 app.listen(PORT, () => {
   console.log("Mi app esta funcionando en el puerto: ", PORT);
