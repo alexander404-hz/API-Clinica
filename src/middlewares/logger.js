@@ -1,4 +1,4 @@
-const LoggerMiddleware = (req, res, next) => {
+exports.LoggerMiddleware = (req, res, next) => {
   const timestamp = new Date().toDateString();
 
   console.log(
@@ -15,5 +15,3 @@ const LoggerMiddleware = (req, res, next) => {
 
   next();
 };
-
-module.exports = LoggerMiddleware;

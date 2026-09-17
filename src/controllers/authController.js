@@ -1,7 +1,6 @@
-const { json } = require("express");
 const { registerUser, loginUser } = require("../services/authService");
 
-const register = async (req, res) => {
+exports.register = async (req, res) => {
   try {
     const { name, email, password } = req.body;
     await registerUser(name, email, password);
@@ -11,7 +10,7 @@ const register = async (req, res) => {
   }
 };
 
-const login = async (req, res) => {
+exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
     const token = await loginUser(email, password);
@@ -20,5 +19,3 @@ const login = async (req, res) => {
     return res.status(400).json({ error: error.message });
   }
 };
-
-module.exports = { register, login };
