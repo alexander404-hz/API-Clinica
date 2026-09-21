@@ -3,8 +3,8 @@ const app = express();
 
 const routes = require("./routes");
 
-const LoggerMiddleware = require("./middlewares/logger");
-const errorHandler = require("./middlewares/errorHandler");
+const { LoggerMiddleware } = require("./middlewares/logger");
+const { errorHandler } = require("./middlewares/errorHandler");
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

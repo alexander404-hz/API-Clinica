@@ -1,60 +1,41 @@
 const {
   createAppointmentService,
+  listAppointmentsService,
   getAppointmentService,
   updateAppointmentService,
   deleteAppointmentService,
-} = require("../services/appointmentsService");
+} = require("../services/appointmentService");
 
 exports.createAppointment = async (req, res) => {
-  try {
-    const newAppointment = await createAppointmentService(req.body);
-    res.status(201).json(newAppointment);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  const newAppointment = await createAppointmentService(req.body, req.user);
+  res.status(201).json(newAppointment);
+};
+
+exports.listAppointments = async (req, res) => {
+  const appointments = await listAppointmentsService(req.user);
+  res.status(200).json(appointments);
 };
 
 exports.getAppointment = async (req, res) => {
-  try {
-    const appointment = await getAppointmentService(req.params.id);
-
-    if (!appointment) {
-      return res.status(404).json({ error: "Appointment not found" });
-    }
-
-    res.status(201).json(appointment);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  const appointment = await getAppointmentService(req.params.id, req.user);
+  res.status(200).json(appointment);
 };
 
 exports.updateAppointment = async (req, res) => {
-  try {
-    const updatedAppointment = await updateAppointmentService(
-      req.params.id,
-      req.body,
-    );
+  const updatedAppointment = await updateAppointmentService(
+    req.params.id,
+    req.body,
+    req.user,
+  );
 
-    if (!updatedAppointment) {
-      return res.status(404).json({ error: "Appointment not found" });
-    }
-
-    res.status(201).json(updatedAppointment);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
+  res.status(200).json(updatedAppointment);
 };
 
 exports.deleteAppointment = async (req, res) => {
-  try {
-    const deletedAppointment = await deleteAppointmentService(req.params.id);
+  const deletedAppointment = await deleteAppointmentService(
+    req.params.id,
+    req.user,
+  );
 
-    if (!deleteAppointment) {
-      return res.status(404).json({ error: "Appointment not found" });
-    }
-
-    res.status(204).send();
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
+  res.status(200).json({ message: "Cita eliminada", data: deletedAppointment });
 };

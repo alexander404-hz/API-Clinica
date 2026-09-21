@@ -13,13 +13,13 @@ const userSeed = [
     name: "Carlos Lopez",
     email: "carlos.lopez@example.com",
     password: "Password123!",
-    role: "USER",
+    role: "DOCTOR",
   },
   {
     name: "Maria Rodriguez",
     email: "maria.rodriguez@example.com",
     password: "Password123!",
-    role: "USER",
+    role: "PATIENT",
   },
 ];
 

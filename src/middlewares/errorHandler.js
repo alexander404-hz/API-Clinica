@@ -1,12 +1,16 @@
 exports.errorHandler = (err, req, res, next) => {
+  if (res.headersSent) return next(err);
+
   const statusCode = err.statusCode || 500;
-  const message = err.message || "Ocurrio un error inesperado";
+  const isServerError = statusCode >= 500;
 
   console.error(
-    `[ERROR] ${new Date().toISOString()} - ${statusCode} - ${message}`,
+    `[ERROR] ${new Date().toISOString()} ${req.method} ${req.originalUrl} - ${statusCode}`,
   );
 
-  if (err.stack) console.error(err.stack);
+  console.error(err.stack || err);
+
+  const message = isServerError ? "Ocurrio un error inesperado" : err.message;
 
   res.status(statusCode).json({
     status: "error",

@@ -1,7 +1,9 @@
 const { PrismaClient } = require("../../generated/prisma");
 const prisma = new PrismaClient();
 
-const createTimeBlockService = async (startTime, endTime) => {
+exports.createTimeBlockService = async (data) => {
+  const { startTime, endTime } = data;
+
   const newTimeBlock = await prisma.timeBlock.create({
     data: {
       startTime: new Date(startTime),
