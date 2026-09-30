@@ -4,6 +4,7 @@ const {
   createAppointmentValidator,
   appointmentIdValidator,
   updateAppointmentValidator,
+  listAppointmentsValidator,
 } = require("../validators/appointmentValidator");
 
 const {
@@ -18,24 +19,30 @@ const {
 const prisma = new PrismaClient();
 
 exports.createAppointmentService = async (data, user) => {
-  const { date, timeBlockId, userId } = createAppointmentValidator(data, user);
+  const { date, timeBlockId, patientId } = createAppointmentValidator(
+    data,
+    user,
+  );
 
   await Promise.all([
     await ensureTimeBlockExist(timeBlockId),
-    await ensurePatientExist(userId),
+    await ensurePatientExist(patientId),
   ]);
 
   await checkTimeConflict(date, timeBlockId);
 
   const newAppointment = await prisma.appointment.create({
-    data: { date, timeBlockId },
+    data: { date, timeBlockId, patientId },
   });
 
   return newAppointment;
 };
 
-exports.listAppointmentsService = async (user) => {
-  const where = getScopeByRole(user);
+exports.listAppointmentsService = async (user, query) => {
+  const scope = getScopeByRole(user);
+  const filters = listAppointmentsValidator(query, user);
+
+  const where = { ...filters, ...scope };
 
   const appointments = await prisma.appointment.findMany({
     where,
@@ -43,7 +50,9 @@ exports.listAppointmentsService = async (user) => {
       id: true,
       date: true,
       timeBlock: true,
-      user: { select: SAFE_USER_SELECT },
+      patient: {
+        select: { user: { select: SAFE_USER_SELECT }, insuranceNumber: true },
+      },
     },
   });
 
@@ -58,16 +67,20 @@ exports.getAppointmentService = async (appointmentId, user) => {
     select: {
       id: true,
       date: true,
-      userId: true,
+      patientId: true,
       timeBlockId: true,
-      user: { select: SAFE_USER_SELECT },
+      patient: {
+        select: { user: { select: SAFE_USER_SELECT }, insuranceNumber: true },
+      },
       timeBlock: true,
     },
   });
 
   checkAppointment(appointment, user);
 
-  return appointment;
+  const { patientId, timeBlockId, ...safeAppointment } = appointment;
+
+  return safeAppointment;
 };
 
 exports.updateAppointmentService = async (appointmentId, data, user) => {
@@ -106,7 +119,7 @@ exports.deleteAppointmentService = async (appointmentId, user) => {
     select: {
       id: true,
       date: true,
-      userId: true,
+      patientId: true,
     },
   });
 

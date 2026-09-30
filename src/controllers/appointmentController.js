@@ -12,7 +12,7 @@ exports.createAppointment = async (req, res) => {
 };
 
 exports.listAppointments = async (req, res) => {
-  const appointments = await listAppointmentsService(req.user);
+  const appointments = await listAppointmentsService(req.user, req.query);
   res.status(200).json(appointments);
 };
 

@@ -1,16 +1,24 @@
 const jwt = require("jsonwebtoken");
+const AppError = require("../utils/AppError");
+const { TOKEN_MISSING, TOKEN_INVALID } = require("../constants/errorCodes");
 
 exports.authenticateToken = (req, res, next) => {
   const token = req.header("Authorization")?.split(" ")[1];
 
   if (!token) {
-    return res.status(401).json({ error: "Access Denied, no token provided" });
+    return next(
+      new AppError("Access denied, no token provided.", 401, TOKEN_MISSING),
+    );
   }
 
   jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ error: "Inavlid token" });
+    if (err) {
+      return next(
+        new AppError("Invalid or expired token.", 401, TOKEN_INVALID),
+      );
+    }
 
     req.user = user;
     next();
   });
-}
+};

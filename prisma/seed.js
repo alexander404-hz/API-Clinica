@@ -3,23 +3,31 @@ const { PrismaClient } = require("../generated/prisma");
 const prisma = new PrismaClient();
 
 const userSeed = [
-  {
-    name: "Ana Garcia",
+  { 
+    firstName: "Ana",
+    lastName: "Garcia",
+    username: "AG19001",
     email: "ana.garcia@example.com",
     password: "Password123!",
     role: "ADMIN",
   },
   {
-    name: "Carlos Lopez",
+    firstName: "Carlos",
+    lastName: "Lopez",
+    username: "CL21005",
     email: "carlos.lopez@example.com",
     password: "Password123!",
-    role: "DOCTOR",
+    role: "PATIENT",
+    insuranceNumber: "INS-0001",
   },
   {
-    name: "Maria Rodriguez",
+    firstName: "Maria",
+    lastName: "Rodriguez",
+    username: "MR18039",
     email: "maria.rodriguez@example.com",
     password: "Password123!",
     role: "PATIENT",
+    insuranceNumber: "INS-0002",
   },
 ];
 
@@ -56,20 +64,41 @@ async function main() {
 
   for (const userData of userSeed) {
     const password = await bcrypt.hash(userData.password, 10);
+
     users[userData.email] = await prisma.user.upsert({
       where: { email: userData.email },
       update: {
-        name: userData.name,
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        username: userData.username,
         password,
         role: userData.role,
       },
       create: {
-        name: userData.name,
+        firstName: userData.firstName,
+        lastName: userData.lastName,
+        username: userData.username,
         email: userData.email,
         password,
         role: userData.role,
+        ...(userData.role === "PATIENT" && {
+          patientProfile: {
+            create: { insuranceNumber: userData.insuranceNumber ?? null },
+          },
+        }),
       },
     });
+
+    if (userData.role === "PATIENT") {
+      await prisma.patient.upsert({
+        where: { id: users[userData.email].id },
+        update: { insuranceNumber: userData.insuranceNumber ?? null },
+        create: {
+          id: users[userData.email].id,
+          insuranceNumber: userData.insuranceNumber ?? null,
+        },
+      });
+    }
   }
 
   await prisma.$transaction(async (transaction) => {
@@ -90,20 +119,22 @@ async function main() {
     await transaction.appointment.createMany({
       data: appointmentSeed.map(({ date, email, timeBlockIndex }) => ({
         date,
-        userId: users[email].id,
+        patientId: users[email].id,
         timeBlockId: createdTimeBlocks[timeBlockIndex].id,
       })),
     });
   });
 
-  const [totalUsers, totalTimeBlocks, totalAppointments] = await Promise.all([
-    prisma.user.count(),
-    prisma.timeBlock.count(),
-    prisma.appointment.count(),
-  ]);
+  const [totalUsers, totalPatients, totalTimeBlocks, totalAppointments] =
+    await Promise.all([
+      prisma.user.count(),
+      prisma.patient.count(),
+      prisma.timeBlock.count(),
+      prisma.appointment.count(),
+    ]);
 
   console.log(
-    `Seed completado. Usuarios: ${totalUsers}, bloques: ${totalTimeBlocks}, citas: ${totalAppointments}`,
+    `Seed completado. Usuarios: ${totalUsers}, pacientes: ${totalPatients}, bloques: ${totalTimeBlocks}, citas: ${totalAppointments}`,
   );
 }
 

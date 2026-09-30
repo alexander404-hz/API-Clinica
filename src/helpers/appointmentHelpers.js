@@ -1,19 +1,23 @@
 const { PrismaClient } = require("../../generated/prisma");
 const prisma = new PrismaClient();
 
+const AppError = require("../utils/AppError");
+
 exports.SAFE_USER_SELECT = {
   id: true,
-  name: true,
+  firstName: true,
+  lastName: true,
+  username: true,
   email: true,
 };
 
 exports.getScopeByRole = (user) => {
   const scopes = {
     ADMIN: {},
-    PATIENT: { userId: user.id },
+    PATIENT: { patientId: user.id },
   };
 
-  return scopes[user.role] ?? { userId: user.id };
+  return scopes[user.role] ?? { patientId: user.id };
 };
 
 exports.checkTimeConflict = async (date, timeBlockId, excludedId = null) => {
@@ -24,37 +28,32 @@ exports.checkTimeConflict = async (date, timeBlockId, excludedId = null) => {
   const conflict = await prisma.appointment.findFirst({ where });
 
   if (conflict) {
-    const error = new Error("El horario no esta disponible");
-    error.statusCode = 409;
-    throw error;
+    throw new AppError("El horario no esta disponible", 409);
   }
 };
 
-exports.ensureTimeBlockExist = async (timeBlockId) => {
+exports.ensureTimeBlockExist = async (id) => {
   const timeBlock = await prisma.timeBlock.findUnique({
-    where: { id: timeBlockId },
+    where: { id },
   });
 
   if (!timeBlock) {
-    const error = new Error("El bloque de horario no existe");
-    error.statusCode = 400;
-    throw error;
+    throw new AppError("El bloque de horario no existe", 400);
   }
 
   return timeBlock;
 };
 
 exports.ensurePatientExist = async (id) => {
-  const patient = await prisma.user.findUnique({
+  const patient = await prisma.patient.findUnique({
     where: { id },
   });
 
   if (!patient) {
-    const error = new Error(
+    throw new AppError(
       "No se pudo crear la cita, verifica los datos enviados",
+      400,
     );
-    error.statusCode = 400;
-    throw error;
   }
 
   return patient;
@@ -63,10 +62,8 @@ exports.ensurePatientExist = async (id) => {
 exports.checkAppointment = (appointment, user) => {
   if (
     !appointment ||
-    (user.role === "PATIENT" && appointment.userId !== user.id)
+    (user.role === "PATIENT" && appointment.patientId !== user.id)
   ) {
-    const error = new Error("Cita no encontrada");
-    error.statusCode = 404;
-    throw error;
+    throw new AppError("Cita no encontrada", 404);
   }
 };
