@@ -1,29 +1,24 @@
-const bcrypt = require("bcryptjs");
-const crypto = require("crypto");
 const { PrismaClient } = require("../../generated/prisma");
-const { PATIENT } = require("../constants/roles");
-const { SALT_ROUNDS } = require("../constants/security");
-
-const {
-  createUserValidator,
-  appointmentIdValidator,
-  updateAppointmentValidator,
-  listAppointmentsValidator,
-} = require("../validators/userValidator");
-
-const {
-  SAFE_USER_SELECT,
-  generateUsername,
-} = require("../helpers/userHelpers");
-
 const prisma = new PrismaClient();
 
+const { SAFE_USER_SELECT } = require("../constants/user");
+
+const {
+  generateUsername,
+  generatePassword,
+  generateHashedPassword,
+  userFound,
+  userOwnAccount,
+} = require("../helpers/userHelpers");
+
 exports.prepareNewUserService = async (data) => {
-  const { firstName, lastName, email } = createUserValidator(data);
+  const { firstName, lastName, email, password } = data;
 
   const username = await generateUsername(firstName, lastName);
-  const tempPassword = crypto.randomBytes(4).toString("base64url");
-  const password = await bcrypt.hash(tempPassword, SALT_ROUNDS);
+
+  const tempPassword = password ? null : generatePassword();
+  const plainPassword = password || tempPassword;
+  const hashedPassword = await generateHashedPassword(plainPassword);
 
   const preparedNewUser = {
     tempPassword,
@@ -32,105 +27,72 @@ exports.prepareNewUserService = async (data) => {
       lastName,
       username,
       email,
-      password,
+      password: hashedPassword,
     },
   };
 
   return preparedNewUser;
 };
 
-/* 
-exports.listAppointmentsService = async (user, query) => {
-  const scope = getScopeByRole(user);
-  const filters = listAppointmentsValidator(query, user);
+exports.listUsersService = async (query) => {
+  const { search, firstName, lastName, username, email, role } = query;
 
-  const where = { ...filters, ...scope };
+  const contains = (value) => ({ contains: value, mode: "insensitive" });
 
-  const appointments = await prisma.appointment.findMany({
-    where,
-    select: {
-      id: true,
-      date: true,
-      timeBlock: true,
-      patient: {
-        select: { user: { select: SAFE_USER_SELECT }, insuranceNumber: true },
-      },
+  const words = search ? search.split(/\s+/).slice(0, 5) : [];
+
+  const users = await prisma.user.findMany({
+    where: {
+      ...(words.length > 0 && {
+        AND: words.map((word) => ({
+          OR: [
+            { firstName: contains(word) },
+            { lastName: contains(word) },
+            { username: contains(word) },
+            { email: contains(word) },
+          ],
+        })),
+      }),
+      ...(firstName && { firstName: contains(firstName) }),
+      ...(lastName && { lastName: contains(lastName) }),
+      ...(username && { username: contains(username) }),
+      ...(email && { email: contains(email) }),
+      ...(role && { role }),
     },
+    select: SAFE_USER_SELECT,
+    orderBy: { id: "asc" },
   });
 
-  return appointments;
+  return users;
 };
 
-exports.getAppointmentService = async (appointmentId, user) => {
-  const id = appointmentIdValidator(appointmentId);
-
-  const appointment = await prisma.appointment.findUnique({
+exports.getUserService = async (id) => {
+  const user = await prisma.user.findUnique({
     where: { id },
-    select: {
-      id: true,
-      date: true,
-      patientId: true,
-      timeBlockId: true,
-      patient: {
-        select: { user: { select: SAFE_USER_SELECT }, insuranceNumber: true },
-      },
-      timeBlock: true,
-    },
+    select: SAFE_USER_SELECT,
   });
 
-  checkAppointment(appointment, user);
+  userFound(user);
 
-  const { patientId, timeBlockId, ...safeAppointment } = appointment;
-
-  return safeAppointment;
+  return user;
 };
 
-exports.updateAppointmentService = async (appointmentId, data, user) => {
-  const id = appointmentIdValidator(appointmentId);
+exports.updateUserService = async (id, data) => {
+  const { firstName, lastName, email } = data;
 
-  const oldAppointment = await prisma.appointment.findUnique({
+  const updatedUser = await prisma.user.update({
     where: { id },
+    data: { firstName, lastName, email },
+    select: SAFE_USER_SELECT,
   });
 
-  checkAppointment(oldAppointment, user);
-
-  const newAppointment = updateAppointmentValidator(data);
-
-  const timeBlockId = newAppointment.timeBlockId ?? oldAppointment.timeBlockId;
-  const date = newAppointment.date ?? oldAppointment.date;
-
-  if (newAppointment.timeBlockId !== undefined) {
-    await ensureTimeBlockExist(timeBlockId);
-  }
-
-  await checkTimeConflict(date, timeBlockId, id);
-
-  const updatedAppointment = await prisma.appointment.update({
-    where: { id },
-    data: { date, timeBlockId },
-  });
-
-  return updatedAppointment;
+  return updatedUser;
 };
 
-exports.deleteAppointmentService = async (appointmentId, user) => {
-  const id = appointmentIdValidator(appointmentId);
+exports.deleteUserService = async (id, currentUserId) => {
+  userOwnAccount(id, currentUserId);
 
-  const currentAppointment = await prisma.appointment.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      date: true,
-      patientId: true,
-    },
-  });
-
-  checkAppointment(currentAppointment, user);
-
-  const deletedAppointment = await prisma.appointment.delete({
+  await prisma.user.delete({
     where: { id },
   });
-
-  return deletedAppointment;
 };
- */

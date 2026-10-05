@@ -1,26 +1,28 @@
 const AppError = require("../utils/AppError");
-
 const {
-  PrismaClient,
   PrismaClientKnownRequestError,
+  PrismaClientUnknownRequestError,
 } = require("../../generated/prisma");
-
 const {
   INVALID_REFERENCE,
   NOT_FOUND,
   FIELD_TAKEN,
+  RESOURCE_IN_USE,
 } = require("../constants/errorCodes");
 
-const prisma = new PrismaClient();
+// Devuelve el código del error de BD: P2xxx (Prisma) o código de Postgres (23xxx)
+const getDbCode = (err) => {
+  if (err instanceof PrismaClientKnownRequestError) return err.code;
+  if (err instanceof PrismaClientUnknownRequestError) {
+    return err.message.match(/code: "(\w+)"/)?.[1];
+  }
+  return undefined;
+};
 
 module.exports = (err) => {
-  if (!(err instanceof PrismaClientKnownRequestError)) return err;
-
-  switch (err.code) {
-    case "P2002":
-      const target = err?.meta.target;
-      const fields = [].concat(target ?? []);
-
+  switch (getDbCode(err)) {
+    case "P2002": {
+      const fields = [].concat(err.meta?.target ?? []);
       return new AppError(
         "A unique field is already in use.",
         409,
@@ -30,13 +32,25 @@ module.exports = (err) => {
           message: `${field} is already in use.`,
         })),
       );
-    case "P2025": // registro no encontrado en update/delete
-      return new AppError("Resource not found.", 404, NOT_FOUND);
-    case "P2003": // llave foránea inválida
+    }
+    case "P2025":
+      return new AppError(
+        `${err.meta?.modelName ?? "Resource"} not found.`,
+        404,
+        NOT_FOUND,
+      );
+    case "P2003":
       return new AppError(
         "Related resource does not exist.",
         409,
         INVALID_REFERENCE,
+      );
+    case "23001": // restrict_violation
+    case "23503": // foreign_key_violation
+      return new AppError(
+        "This resource cannot be deleted because other records depend on it.",
+        409,
+        RESOURCE_IN_USE,
       );
     default:
       return err;

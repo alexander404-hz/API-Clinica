@@ -2,7 +2,7 @@ const AppError = require("../utils/AppError");
 const { INTERNAL_ERROR } = require("../constants/errorCodes");
 const translatePrismaError = require("../utils/translatePrismaError");
 
-exports.errorHandler = (err, req, res, next) => {
+module.exports = (err, req, res, next) => {
   if (res.headersSent) return next(err);
 
   err = translatePrismaError(err);

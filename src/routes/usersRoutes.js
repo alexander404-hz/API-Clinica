@@ -1,27 +1,67 @@
 const { Router } = require("express");
-const { authorize } = require("../middlewares/authorize");
+const router = Router();
+
+const authorize = require("../middlewares/authorize");
+const validate = require("../middlewares/validate");
+const allowFields = require("../middlewares/allowFields");
+
+const { idParamValidator } = require("../validators/commonValidator");
+const { SELF_EDITABLE_FIELDS } = require("../constants/user");
 
 const {
   ROLES: { ADMIN },
 } = require("../constants/roles");
 
 const {
+  listUsersValidator,
+  updateUsersValidator,
+} = require("../validators/userValidator");
+
+const {
   getMyProfile,
   updateMyProfile,
   listUsers,
-  getAUser,
+  getUser,
   updateUser,
   deleteUser,
 } = require("../controllers/userController");
 
-const router = Router();
-/* 
 router.get("/me", getMyProfile);
-router.patch("/me", updateMyProfile); */
 
-router.get("/", authorize("ADMIN"), listUsers);
-/* router.get("/:id", authorize("ADMIN"), getAUser);
-router.patch("/:id", authorize("ADMIN"), updateUser);
-router.delete("/:id", authorize("ADMIN"), deleteUser); */
+router.patch(
+  "/me",
+  allowFields(SELF_EDITABLE_FIELDS),
+  validate(updateUsersValidator, "body"),
+  updateMyProfile,
+);
+
+router.get(
+  "/",
+  authorize(ADMIN),
+  validate(listUsersValidator, "query"),
+  listUsers,
+);
+
+router.get(
+  "/:id",
+  authorize(ADMIN),
+  validate(idParamValidator, "params"),
+  getUser,
+);
+
+router.patch(
+  "/:id",
+  authorize(ADMIN),
+  validate(idParamValidator, "params"),
+  validate(updateUsersValidator, "body"),
+  updateUser,
+);
+
+router.delete(
+  "/:id",
+  validate(idParamValidator, "params"),
+  authorize(ADMIN),
+  deleteUser,
+);
 
 module.exports = router;

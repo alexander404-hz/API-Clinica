@@ -1,5 +1,6 @@
+const authorize = require("../middlewares/authorize");
 const { Router } = require("express");
-const { authorize } = require("../middlewares/authorize");
+
 const {
   createAppointment,
   listAppointments,

@@ -35,7 +35,8 @@ model User {
 model Patient {
   id              Int           @id
   user            User          @relation(fields: [id], references: [id])
-  insuranceNumber String
+  preferredName   String?
+  insuranceNumber String        @unique
   appointments    Appointment[]
 }
 

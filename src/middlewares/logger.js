@@ -1,4 +1,4 @@
-exports.LoggerMiddleware = (req, res, next) => {
+module.exports = (req, res, next) => {
   const timestamp = new Date().toDateString();
 
   console.log(
