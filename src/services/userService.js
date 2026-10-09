@@ -1,14 +1,15 @@
-const { PrismaClient } = require("../../generated/prisma");
-const prisma = new PrismaClient();
-
+const prisma = require("../prisma");
 const { SAFE_USER_SELECT } = require("../constants/user");
+const {
+  buildDateRangeFilter,
+  assertFound,
+} = require("../helpers/commonHelpers");
 
 const {
   generateUsername,
   generatePassword,
   generateHashedPassword,
-  userFound,
-  userOwnAccount,
+  assertNotSelf,
 } = require("../helpers/userHelpers");
 
 exports.prepareNewUserService = async (data) => {
@@ -34,10 +35,48 @@ exports.prepareNewUserService = async (data) => {
   return preparedNewUser;
 };
 
+exports.getUserService = async (id) => {
+  const user = await prisma.user.findUnique({
+    where: { id, deletedAt: null },
+    select: SAFE_USER_SELECT,
+  });
+
+  assertFound(user);
+
+  return user;
+};
+
 exports.listUsersService = async (query) => {
-  const { search, firstName, lastName, username, email, role } = query;
+  const {
+    search,
+    firstName,
+    lastName,
+    username,
+    email,
+    role,
+    isActive,
+    createdFrom,
+    createdTo,
+    updatedFrom,
+    updatedTo,
+  } = query;
+
+  const createdAt = buildDateRangeFilter(createdFrom, createdTo);
+  const updatedAt = buildDateRangeFilter(updatedFrom, updatedTo);
 
   const contains = (value) => ({ contains: value, mode: "insensitive" });
+
+  const userFilter = {
+    deletedAt: null,
+    ...(firstName && { firstName: contains(firstName) }),
+    ...(lastName && { lastName: contains(lastName) }),
+    ...(username && { username: contains(username) }),
+    ...(email && { email: contains(email) }),
+    ...(role && { role }),
+    ...(isActive !== undefined && { isActive }),
+    ...(createdAt && { createdAt }),
+    ...(updatedAt && { updatedAt }),
+  };
 
   const words = search ? search.split(/\s+/).slice(0, 5) : [];
 
@@ -53,36 +92,26 @@ exports.listUsersService = async (query) => {
           ],
         })),
       }),
-      ...(firstName && { firstName: contains(firstName) }),
-      ...(lastName && { lastName: contains(lastName) }),
-      ...(username && { username: contains(username) }),
-      ...(email && { email: contains(email) }),
-      ...(role && { role }),
+      ...userFilter,
     },
     select: SAFE_USER_SELECT,
     orderBy: { id: "asc" },
+    take: 100,
   });
 
   return users;
 };
 
-exports.getUserService = async (id) => {
-  const user = await prisma.user.findUnique({
-    where: { id },
-    select: SAFE_USER_SELECT,
-  });
+exports.updateUserService = async (id, data, currentUserId) => {
+  const { firstName, lastName, email, isActive } = data;
 
-  userFound(user);
-
-  return user;
-};
-
-exports.updateUserService = async (id, data) => {
-  const { firstName, lastName, email } = data;
+  if (isActive === false) {
+    assertNotSelf(id, currentUserId, "deactivate");
+  }
 
   const updatedUser = await prisma.user.update({
-    where: { id },
-    data: { firstName, lastName, email },
+    where: { id, deletedAt: null },
+    data: { firstName, lastName, email, isActive },
     select: SAFE_USER_SELECT,
   });
 
@@ -90,9 +119,10 @@ exports.updateUserService = async (id, data) => {
 };
 
 exports.deleteUserService = async (id, currentUserId) => {
-  userOwnAccount(id, currentUserId);
+  assertNotSelf(id, currentUserId, "delete");
 
-  await prisma.user.delete({
-    where: { id },
+  await prisma.user.update({
+    where: { id, deletedAt: null },
+    data: { deletedAt: new Date() },
   });
 };

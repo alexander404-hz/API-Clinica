@@ -1,8 +1,9 @@
-const { ADMIN, DOCTOR, PATIENT } = require("./roles");
+const {
+  ROLES: { ADMIN, PATIENT },
+} = require("../constants/roles");
 
 exports.SELF_USER_EDITABLE_FIELDS = Object.freeze({
   [ADMIN]: ["firstName", "lastName", "email"],
-  [DOCTOR]: ["email"],
   [PATIENT]: ["email"],
 });
 
@@ -13,4 +14,7 @@ exports.SAFE_USER_SELECT = Object.freeze({
   username: true,
   email: true,
   role: true,
+  isActive: true,
+  createdAt: true,
+  updatedAt: true,
 });

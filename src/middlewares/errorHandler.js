@@ -1,4 +1,3 @@
-const AppError = require("../utils/AppError");
 const { INTERNAL_ERROR } = require("../constants/errorCodes");
 const translatePrismaError = require("../utils/translatePrismaError");
 

@@ -1,4 +1,4 @@
-const { PrismaClient } = require("../../generated/prisma");
+const prisma = require("../prisma");
 
 const {
   createAppointmentValidator,
@@ -15,8 +15,6 @@ const {
   ensurePatientExist,
   checkAppointment,
 } = require("../helpers/appointmentHelpers");
-
-const prisma = new PrismaClient();
 
 exports.createAppointmentService = async (data, user) => {
   const { date, timeBlockId, patientId } = createAppointmentValidator(

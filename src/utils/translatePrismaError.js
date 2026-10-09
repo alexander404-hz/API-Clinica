@@ -10,7 +10,7 @@ const {
   RESOURCE_IN_USE,
 } = require("../constants/errorCodes");
 
-// Devuelve el código del error de BD: P2xxx (Prisma) o código de Postgres (23xxx)
+// Devuelve el código del error de BD
 const getDbCode = (err) => {
   if (err instanceof PrismaClientKnownRequestError) return err.code;
   if (err instanceof PrismaClientUnknownRequestError) {

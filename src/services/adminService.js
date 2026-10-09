@@ -1,6 +1,4 @@
-const { PrismaClient } = require("../../generated/prisma");
-const prisma = new PrismaClient();
-
+const prisma = require("../prisma");
 const { prepareNewUserService } = require("./userService");
 const { SAFE_USER_SELECT } = require("../constants/user");
 

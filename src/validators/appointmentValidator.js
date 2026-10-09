@@ -22,7 +22,7 @@ function parseTimeBlockId(timeBlockId) {
 
 //mover despues a helpers
 function resolvePatientId(data, user) {
-  const allowedRolesToAssign = ["ADMIN", "DOCTOR"];
+  const allowedRolesToAssign = ["ADMIN"];
 
   if (!allowedRolesToAssign.includes(user.role)) {
     return user.id;

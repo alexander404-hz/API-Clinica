@@ -5,34 +5,38 @@ const authorize = require("../middlewares/authorize");
 const validate = require("../middlewares/validate");
 const allowFields = require("../middlewares/allowFields");
 
-const { idParamValidator } = require("../validators/commonValidator");
-const { SELF_EDITABLE_FIELDS } = require("../constants/user");
+const { idParamValidator } = require("../validators/validatorUtils");
+const { SELF_PATIENT_EDITABLE_FIELDS } = require("../constants/patient");
 
 const {
-  ROLES: { ADMIN, DOCTOR },
+  ROLES: { ADMIN, PATIENT },
 } = require("../constants/roles");
 
 const {
   createPatientValidator,
   listPatientsValidator,
+  updatePatientValidator,
 } = require("../validators/patientValidator");
 
 const {
   createPatient,
   listPatients,
+  getPatient,
+  updatePatient,
+  deletePatient,
+  getMyProfile,
+  updateMyProfile,
 } = require("../controllers/patientController");
 
-/*
-router.get("/me", getMyProfile); 
+router.get("/me", authorize(PATIENT), getMyProfile);
 
 router.patch(
   "/me",
-  allowFields(SELF_EDITABLE_FIELDS),
-  validate(updateUsersValidator, "body"),
+  authorize(PATIENT),
+  allowFields(SELF_PATIENT_EDITABLE_FIELDS),
+  validate(updatePatientValidator, "body"),
   updateMyProfile,
 );
-
-*/
 
 router.post(
   "/",
@@ -43,7 +47,7 @@ router.post(
 
 router.get(
   "/",
-  authorize(ADMIN, DOCTOR),
+  authorize(ADMIN),
   validate(listPatientsValidator, "query"),
   listPatients,
 );
@@ -55,20 +59,19 @@ router.get(
   getPatient,
 );
 
-/*
 router.patch(
   "/:id",
   authorize(ADMIN),
   validate(idParamValidator, "params"),
-  validate(updateUsersValidator, "body"),
-  updateUser,
+  validate(updatePatientValidator, "body"),
+  updatePatient,
 );
 
 router.delete(
   "/:id",
   validate(idParamValidator, "params"),
   authorize(ADMIN),
-  deleteUser,
+  deletePatient,
 );
- */
+
 module.exports = router;

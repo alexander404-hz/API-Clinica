@@ -1,4 +1,5 @@
 module.exports = Object.freeze({
+  CONFLICT: "CONFLICT",
   ERROR: "ERROR",
   FIELD_TAKEN: "FIELD_TAKEN",
   FORBIDDEN: "FORBIDDEN",

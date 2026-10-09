@@ -1,6 +1,5 @@
 exports.ROLES = Object.freeze({
   ADMIN: "ADMIN",
-  DOCTOR: "DOCTOR",
   PATIENT: "PATIENT",
 });
 

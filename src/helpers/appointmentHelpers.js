@@ -1,6 +1,4 @@
-const { PrismaClient } = require("../../generated/prisma");
-const prisma = new PrismaClient();
-
+const prisma = require("../prisma");
 const AppError = require("../utils/AppError");
 
 exports.SAFE_USER_SELECT = {

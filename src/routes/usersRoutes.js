@@ -5,8 +5,8 @@ const authorize = require("../middlewares/authorize");
 const validate = require("../middlewares/validate");
 const allowFields = require("../middlewares/allowFields");
 
-const { idParamValidator } = require("../validators/commonValidator");
-const { SELF_EDITABLE_FIELDS } = require("../constants/user");
+const { idParamValidator } = require("../validators/validatorUtils");
+const { SELF_USER_EDITABLE_FIELDS } = require("../constants/user");
 
 const {
   ROLES: { ADMIN },
@@ -14,7 +14,7 @@ const {
 
 const {
   listUsersValidator,
-  updateUsersValidator,
+  updateUserValidator,
 } = require("../validators/userValidator");
 
 const {
@@ -30,8 +30,8 @@ router.get("/me", getMyProfile);
 
 router.patch(
   "/me",
-  allowFields(SELF_EDITABLE_FIELDS),
-  validate(updateUsersValidator, "body"),
+  allowFields(SELF_USER_EDITABLE_FIELDS),
+  validate(updateUserValidator, "body"),
   updateMyProfile,
 );
 
@@ -53,7 +53,7 @@ router.patch(
   "/:id",
   authorize(ADMIN),
   validate(idParamValidator, "params"),
-  validate(updateUsersValidator, "body"),
+  validate(updateUserValidator, "body"),
   updateUser,
 );
 

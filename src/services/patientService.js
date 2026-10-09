@@ -1,13 +1,20 @@
-const { PrismaClient } = require("../../generated/prisma");
-const prisma = new PrismaClient();
-
+const prisma = require("../prisma");
 const { prepareNewUserService } = require("./userService");
 const { SAFE_PATIENT_SELECT } = require("../constants/patient");
+const { flattenProfile } = require("../helpers/userHelpers");
+
+const {
+  buildDateRangeFilter,
+  assertFound,
+} = require("../helpers/commonHelpers");
+
+const {
+  STATUS: { SCHEDULED, CANCELLED },
+} = require("../constants/AppointmentStatus");
 
 const {
   ROLES: { PATIENT },
 } = require("../constants/roles");
-const { toPatientResponse } = require("../helpers/patientHelpers");
 
 exports.createPatientService = async (data) => {
   const { userData, tempPassword } = await prepareNewUserService(data);
@@ -24,7 +31,18 @@ exports.createPatientService = async (data) => {
 
   if (tempPassword) console.log(tempPassword); // simula enviar por correo
 
-  return toPatientResponse(newPatient);
+  return flattenProfile(newPatient);
+};
+
+exports.getPatientService = async (id) => {
+  const patient = await prisma.patient.findUnique({
+    where: { id, user: { deletedAt: null } },
+    select: SAFE_PATIENT_SELECT,
+  });
+
+  assertFound(patient, "Patient");
+
+  return flattenProfile(patient);
 };
 
 exports.listPatientsService = async (query) => {
@@ -34,18 +52,32 @@ exports.listPatientsService = async (query) => {
     lastName,
     username,
     email,
+    role,
+    isActive,
+    createdFrom,
+    createdTo,
+    updatedFrom,
+    updatedTo,
     insuranceNumber,
     preferredName,
     hasPreferredName,
   } = query;
 
+  const createdAt = buildDateRangeFilter(createdFrom, createdTo);
+  const updatedAt = buildDateRangeFilter(updatedFrom, updatedTo);
+
   const contains = (value) => ({ contains: value, mode: "insensitive" });
 
   const userFilter = {
+    deletedAt: null,
     ...(firstName && { firstName: contains(firstName) }),
     ...(lastName && { lastName: contains(lastName) }),
     ...(username && { username: contains(username) }),
     ...(email && { email: contains(email) }),
+    ...(role && { role }),
+    ...(isActive !== undefined && { isActive }),
+    ...(createdAt && { createdAt }),
+    ...(updatedAt && { updatedAt }),
   };
 
   const conditions = [];
@@ -76,47 +108,47 @@ exports.listPatientsService = async (query) => {
 
   const patients = await prisma.patient.findMany({
     where: {
-      ...(Object.keys(userFilter).length > 0 && { user: userFilter }),
+      user: userFilter,
       ...(insuranceNumber && { insuranceNumber: contains(insuranceNumber) }),
       ...(conditions.length > 0 && { AND: conditions }),
     },
     select: SAFE_PATIENT_SELECT,
     orderBy: { id: "asc" },
-    take: 1000,
+    take: 100,
   });
 
-  return patients.map(toPatientResponse);
+  return patients.map(flattenProfile);
 };
 
-/*
-exports.getUserService = async (id) => {
-  const user = await prisma.user.findUnique({
-    where: { id },
-    select: SAFE_USER_SELECT,
+exports.updatePatientService = async (id, data) => {
+  const { preferredName, insuranceNumber, ...account } = data;
+
+  const updatedPatient = await prisma.patient.update({
+    where: { id, user: { deletedAt: null } },
+    data: {
+      insuranceNumber,
+      preferredName,
+      ...(Object.keys(account).length > 0 && { user: { update: account } }),
+    },
+    select: SAFE_PATIENT_SELECT,
   });
 
-  userFound(user);
-
-  return user;
+  return flattenProfile(updatedPatient);
 };
 
-exports.updateUserService = async (id, data) => {
-  const { firstName, lastName, email } = data;
+exports.deletePatientService = async (id) => {
+  const now = new Date();
+  const today = new Date(now.toISOString().slice(0, 10)); // inicio del día en UTC
 
-  const updatedUser = await prisma.user.update({
-    where: { id },
-    data: { firstName, lastName, email },
-    select: SAFE_USER_SELECT,
-  });
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id, deletedAt: null, role: PATIENT },
+      data: { deletedAt: now },
+    }),
 
-  return updatedUser;
+    prisma.appointment.updateMany({
+      where: { patientId: id, status: SCHEDULED, date: { gte: today } },
+      data: { status: CANCELLED, cancelledAt: now },
+    }),
+  ]);
 };
-
-exports.deleteUserService = async (id, currentUserId) => {
-  userOwnAccount(id, currentUserId);
-
-  await prisma.user.delete({
-    where: { id },
-  });
-};
- */

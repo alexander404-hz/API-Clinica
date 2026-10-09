@@ -1,11 +1,10 @@
-const { PrismaClient } = require("../../generated/prisma");
-const prisma = new PrismaClient();
+const prisma = require("../prisma");
 
 const AppError = require("../utils/AppError");
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const { SALT_ROUNDS } = require("../constants/security");
-const { NOT_FOUND, FORBIDDEN } = require("../constants/errorCodes");
+const { FORBIDDEN } = require("../constants/errorCodes");
 
 exports.generateUsername = async (firstName, lastName) => {
   const createdAt = new Date();
@@ -27,18 +26,15 @@ exports.generateHashedPassword = (plainPassword) => {
   return bcrypt.hash(plainPassword, SALT_ROUNDS);
 };
 
-exports.userFound = (user) => {
-  if (!user) {
-    throw new AppError("User not found.", 404, NOT_FOUND);
+exports.assertNotSelf = (id, currentUserId, label) => {
+  if (id === currentUserId) {
+    throw new AppError(`You cannot ${label} your own account.`, 409, FORBIDDEN);
   }
 };
 
-exports.userOwnAccount = (id, currentUserId) => {
-  if (id === currentUserId) {
-    throw new AppError(
-      "You cannot deactivate your own account.",
-      409,
-      FORBIDDEN,
-    );
-  }
+exports.flattenProfile = (userRole) => {
+  const { user, ...profile } = userRole;
+  const roleResponse = { ...user, ...profile };
+
+  return roleResponse;
 };

@@ -15,20 +15,21 @@ exports.updateMyProfile = async (req, res) => {
   res.status(200).json(updatedUser);
 };
 
-exports.listUsers = async (req, res) => {
-  const users = await listUsersService(req.validated.query);
-  res.status(200).json(users);
-};
-
 exports.getUser = async (req, res) => {
   const user = await getUserService(req.validated.params.id);
   res.status(200).json(user);
+};
+
+exports.listUsers = async (req, res) => {
+  const users = await listUsersService(req.validated.query);
+  res.status(200).json(users);
 };
 
 exports.updateUser = async (req, res) => {
   const updatedUser = await updateUserService(
     req.validated.params.id,
     req.validated.body,
+    req.user.id,
   );
   res.status(200).json(updatedUser);
 };
