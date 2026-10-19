@@ -1,20 +1,18 @@
-const prisma = require("../prisma");
-const { prepareNewUserService } = require("./userService");
-const { SAFE_USER_SELECT } = require("../constants/user");
+const { prisma, Role } = require("../prisma");
+const { ADMIN } = Role;
 
-const {
-  ROLES: { ADMIN },
-} = require("../constants/roles");
+const { USER_DETAILS_SELECT } = require("../constants/user");
+const { prepareNewUserService } = require("./userService");
 
 exports.createAdminService = async (data) => {
-  const { userData, tempPassword } = await prepareNewUserService(data);
+  const { userData, tempPassword } = await prepareNewUserService(prisma, data);
 
   const newAdmin = await prisma.user.create({
     data: {
       ...userData,
       role: ADMIN,
     },
-    select: SAFE_USER_SELECT,
+    select: USER_DETAILS_SELECT,
   });
 
   console.log(tempPassword); // simula enviar la contraseña temporal por correo
@@ -22,26 +20,4 @@ exports.createAdminService = async (data) => {
   return newAdmin;
 };
 
-exports.createTimeBlockService = async (data) => {
-  const { startTime, endTime } = data;
-
-  const newTimeBlock = await prisma.timeBlock.create({
-    data: {
-      startTime: new Date(startTime),
-      endTime: new Date(endTime),
-    },
-  });
-
-  return newTimeBlock;
-};
-
-exports.listAppointmentsService = async () => {
-  const appointments = await prisma.appointment.findMany({
-    include: {
-      user: true,
-      timeBlock: true,
-    },
-  });
-
-  return appointments;
-};
+//flattenUser(newPatient)

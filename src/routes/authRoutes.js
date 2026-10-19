@@ -1,14 +1,57 @@
 const { Router } = require("express");
 const router = Router();
 
-const { register, login } = require("../controllers/authController");
-const { authenticateToken } = require("../middlewares/auth");
+const validate = require("../middlewares/validate");
+const { resolveAccount } = require("../middlewares/resolveAccount");
+const { authenticateToken } = require("../middlewares/authenticate");
 
-router.post("/register", register);
-router.post("/login", login);
+const {
+  registerPatient,
+  login,
+  changePassword,
+} = require("../controllers/authController");
 
-router.get("/protected-route", authenticateToken, (req, res) => {
-  res.send("Esta es una ruta protegida");
-});
+const {
+  registerPatientValidator,
+  loginValidator,
+  changePasswordValidator,
+} = require("../validators/authValidator");
+
+const {
+  registerIpLimiter,
+  registerEmailLimiter,
+  loginIpLimiter,
+  loginAccountLimiter,
+  authFailLimiter,
+  userLimiter,
+  changePasswordLimiter,
+} = require("../middlewares/rateLimiters");
+
+router.post(
+  "/register",
+  registerIpLimiter,
+  validate(registerPatientValidator, "body"),
+  registerEmailLimiter,
+  registerPatient,
+);
+
+router.post(
+  "/login",
+  loginIpLimiter,
+  validate(loginValidator, "body"),
+  resolveAccount,
+  loginAccountLimiter,
+  login,
+);
+
+router.post(
+  "/change-password",
+  authFailLimiter,
+  authenticateToken,
+  userLimiter,
+  changePasswordLimiter,
+  validate(changePasswordValidator, "body"),
+  changePassword,
+);
 
 module.exports = router;

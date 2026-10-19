@@ -1,131 +1,183 @@
-const prisma = require("../prisma");
+const { prisma, Role, AppointmentStatus } = require("../prisma");
+const { PATIENT } = Role;
+const { CANCELLED, SCHEDULED, COMPLETED, NO_SHOW } = AppointmentStatus;
+
+const { APPOINTMENT_BASE_SELECT } = require("../constants/appointment");
+const { getPatientService } = require("./patientService");
 
 const {
-  createAppointmentValidator,
-  appointmentIdValidator,
-  updateAppointmentValidator,
-  listAppointmentsValidator,
-} = require("../validators/appointmentValidator");
+  assertFound,
+  buildRangeFilter,
+  contains,
+  getClinicDayRange,
+  getClinicDateOf,
+} = require("../helpers/commonHelpers");
 
 const {
-  SAFE_USER_SELECT,
-  getScopeByRole,
-  checkTimeConflict,
-  ensureTimeBlockExist,
-  ensurePatientExist,
-  checkAppointment,
+  assertAvailableTimeBlock,
+  resolvePatientId,
+  serializeAppointment,
+  ownerFilter,
+  assertCancellationWindowOpen,
+  selectFor,
+  assertValidTransition,
+  assertAppointmentDayStarted,
+  assertCanCorrectNoShow,
 } = require("../helpers/appointmentHelpers");
 
-exports.createAppointmentService = async (data, user) => {
-  const { date, timeBlockId, patientId } = createAppointmentValidator(
-    data,
-    user,
-  );
+exports.createAppointmentService = async (data, currentUser) => {
+  const { startsAt, endsAt } = data;
 
-  await Promise.all([
-    await ensureTimeBlockExist(timeBlockId),
-    await ensurePatientExist(patientId),
-  ]);
+  await assertAvailableTimeBlock(startsAt, endsAt, currentUser);
 
-  await checkTimeConflict(date, timeBlockId);
+  const patientId = await resolvePatientId(data.patientId, currentUser);
+  await getPatientService(patientId);
 
   const newAppointment = await prisma.appointment.create({
-    data: { date, timeBlockId, patientId },
+    data: { startsAt, endsAt, patientId },
+    select: APPOINTMENT_BASE_SELECT,
   });
 
   return newAppointment;
 };
 
-exports.listAppointmentsService = async (user, query) => {
-  const scope = getScopeByRole(user);
-  const filters = listAppointmentsValidator(query, user);
-
-  const where = { ...filters, ...scope };
-
-  const appointments = await prisma.appointment.findMany({
-    where,
-    select: {
-      id: true,
-      date: true,
-      timeBlock: true,
-      patient: {
-        select: { user: { select: SAFE_USER_SELECT }, insuranceNumber: true },
-      },
-    },
-  });
-
-  return appointments;
-};
-
-exports.getAppointmentService = async (appointmentId, user) => {
-  const id = appointmentIdValidator(appointmentId);
-
+exports.getAppointmentService = async (id, currentUser) => {
   const appointment = await prisma.appointment.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      date: true,
-      patientId: true,
-      timeBlockId: true,
-      patient: {
-        select: { user: { select: SAFE_USER_SELECT }, insuranceNumber: true },
-      },
-      timeBlock: true,
+    where: {
+      id,
+      ...ownerFilter(currentUser),
     },
+    select: selectFor(currentUser),
   });
 
-  checkAppointment(appointment, user);
+  assertFound(appointment, "Appointment");
 
-  const { patientId, timeBlockId, ...safeAppointment } = appointment;
-
-  return safeAppointment;
+  return serializeAppointment(appointment);
 };
 
-exports.updateAppointmentService = async (appointmentId, data, user) => {
-  const id = appointmentIdValidator(appointmentId);
+exports.listAppointmentsService = async (query, currentUser) => {
+  const {
+    search,
+    startsFrom,
+    startsTo,
+    endsFrom,
+    endsTo,
+    status,
+    statusChangedFrom,
+    statusChangedTo,
+    statusChangedById,
+    patientId,
+    createdFrom,
+    createdTo,
+  } = query;
 
-  const oldAppointment = await prisma.appointment.findUnique({
-    where: { id },
-  });
+  const startsAt = buildRangeFilter(startsFrom, startsTo);
+  const endsAt = buildRangeFilter(endsFrom, endsTo);
+  const statusChangedAt = buildRangeFilter(statusChangedFrom, statusChangedTo);
+  const createdAt = buildRangeFilter(createdFrom, createdTo);
 
-  checkAppointment(oldAppointment, user);
+  const isPatient = currentUser.role === PATIENT;
 
-  const newAppointment = updateAppointmentValidator(data);
+  const conditions = [];
+  const words = !isPatient && search ? search.split(/\s+/).slice(0, 5) : [];
 
-  const timeBlockId = newAppointment.timeBlockId ?? oldAppointment.timeBlockId;
-  const date = newAppointment.date ?? oldAppointment.date;
-
-  if (newAppointment.timeBlockId !== undefined) {
-    await ensureTimeBlockExist(timeBlockId);
+  for (const word of words) {
+    conditions.push({
+      patient: {
+        OR: [
+          { user: { firstName: contains(word) } },
+          { user: { lastName: contains(word) } },
+          { user: { username: contains(word) } },
+          { user: { email: contains(word) } },
+          { insuranceNumber: contains(word) },
+          { preferredName: contains(word) },
+        ],
+      },
+    });
   }
 
-  await checkTimeConflict(date, timeBlockId, id);
+  const ownerFilter = isPatient
+    ? { patientId: currentUser.id }
+    : patientId && { patientId };
 
-  const updatedAppointment = await prisma.appointment.update({
-    where: { id },
-    data: { date, timeBlockId },
+  const appointments = await prisma.appointment.findMany({
+    where: {
+      ...ownerFilter,
+      ...(startsAt && { startsAt }),
+      ...(endsAt && { endsAt }),
+      ...(status && { status }),
+      ...(statusChangedAt && { statusChangedAt }),
+      ...(!isPatient && statusChangedById && { statusChangedById }),
+      ...(createdAt && { createdAt }),
+      ...(conditions.length > 0 && { AND: conditions }),
+    },
+    select: selectFor(currentUser),
+    orderBy: { startsAt: "desc" },
+    take: 100,
   });
 
-  return updatedAppointment;
+  return appointments.map(serializeAppointment);
 };
 
-exports.deleteAppointmentService = async (appointmentId, user) => {
-  const id = appointmentIdValidator(appointmentId);
+const markAppointment = async (id, currentUser, status) => {
+  const appointment = await prisma.appointment.findUnique({
+    where: { id, ...ownerFilter(currentUser) },
+    select: { startsAt: true, status: true },
+  });
 
-  const currentAppointment = await prisma.appointment.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      date: true,
-      patientId: true,
+  assertFound(appointment, "Appointment");
+  assertValidTransition(appointment.status, status);
+
+  const now = new Date();
+  const isPatient = currentUser.role === PATIENT;
+  const from = appointment.status;
+
+  assertCanCorrectNoShow(from, currentUser);
+
+  if (status === CANCELLED) {
+    if (isPatient && from === SCHEDULED) {
+      assertCancellationWindowOpen(appointment, now);
+    }
+  } else if (status === COMPLETED && from === SCHEDULED) {
+    assertAppointmentDayStarted(appointment, now);
+  }
+
+  const updated = await prisma.appointment.update({
+    where: { id, status: from, ...ownerFilter(currentUser) },
+    data: { status, statusChangedAt: now, statusChangedById: currentUser.id },
+    select: selectFor(currentUser),
+  });
+
+  return serializeAppointment(updated);
+};
+
+exports.cancelAppointmentService = (id, currentUser) =>
+  markAppointment(id, currentUser, CANCELLED);
+
+exports.completeAppointmentService = (id, currentUser) =>
+  markAppointment(id, currentUser, COMPLETED);
+
+exports.closeExpiredAppointmentsService = async (now = new Date()) => {
+  // Inicio del día actual en hora de la clínica: todo lo anterior ya terminó
+  const { dayStart } = getClinicDayRange(getClinicDateOf(now));
+
+  const system = await prisma.user.findUnique({
+    where: { username: "system" },
+    select: { id: true },
+  });
+
+  if (!system) {
+    throw new Error('System user not found. Run the seed to create "system".');
+  }
+
+  const { count } = await prisma.appointment.updateMany({
+    where: { status: SCHEDULED, startsAt: { lt: dayStart } },
+    data: {
+      status: NO_SHOW,
+      statusChangedAt: now,
+      statusChangedById: system.id,
     },
   });
 
-  checkAppointment(currentAppointment, user);
-
-  const deletedAppointment = await prisma.appointment.delete({
-    where: { id },
-  });
-
-  return deletedAppointment;
+  return count;
 };

@@ -1,16 +1,20 @@
 const { Router } = require("express");
 const router = Router();
 
+const { Role } = require("../prisma");
+const { ADMIN, PATIENT } = Role;
+
 const authorize = require("../middlewares/authorize");
 const validate = require("../middlewares/validate");
 const allowFields = require("../middlewares/allowFields");
 
+const { PATIENT_EDITABLE_FIELDS } = require("../constants/patient");
 const { idParamValidator } = require("../validators/validatorUtils");
-const { SELF_PATIENT_EDITABLE_FIELDS } = require("../constants/patient");
 
 const {
-  ROLES: { ADMIN, PATIENT },
-} = require("../constants/roles");
+  patientCreateLimiter,
+  listLimiter,
+} = require("../middlewares/rateLimiters");
 
 const {
   createPatientValidator,
@@ -33,13 +37,14 @@ router.get("/me", authorize(PATIENT), getMyProfile);
 router.patch(
   "/me",
   authorize(PATIENT),
-  allowFields(SELF_PATIENT_EDITABLE_FIELDS),
+  allowFields(PATIENT_EDITABLE_FIELDS),
   validate(updatePatientValidator, "body"),
   updateMyProfile,
 );
 
 router.post(
   "/",
+  patientCreateLimiter,
   authorize(ADMIN),
   validate(createPatientValidator, "body"),
   createPatient,
@@ -47,6 +52,7 @@ router.post(
 
 router.get(
   "/",
+  listLimiter,
   authorize(ADMIN),
   validate(listPatientsValidator, "query"),
   listPatients,

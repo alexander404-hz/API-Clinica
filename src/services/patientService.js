@@ -1,24 +1,31 @@
-const prisma = require("../prisma");
+const { prisma, Role, AppointmentStatus } = require("../prisma");
+const { PATIENT } = Role;
+const { SCHEDULED, CANCELLED } = AppointmentStatus;
+
 const { prepareNewUserService } = require("./userService");
-const { SAFE_PATIENT_SELECT } = require("../constants/patient");
-const { flattenProfile } = require("../helpers/userHelpers");
 
 const {
-  buildDateRangeFilter,
+  PATIENT_DETAILS_SELECT,
+  PATIENT_FULL_SELECT,
+} = require("../constants/patient");
+
+const {
+  flattenUser,
+  deletedAtFilter,
+  assertUpdated,
+} = require("../helpers/userHelpers");
+
+const {
+  buildRangeFilter,
   assertFound,
+  contains,
 } = require("../helpers/commonHelpers");
 
-const {
-  STATUS: { SCHEDULED, CANCELLED },
-} = require("../constants/AppointmentStatus");
-
-const {
-  ROLES: { PATIENT },
-} = require("../constants/roles");
-
 exports.createPatientService = async (data) => {
-  const { userData, tempPassword } = await prepareNewUserService(data);
   const { preferredName, insuranceNumber } = data;
+  const { userData, tempPassword } = await prepareNewUserService(prisma, data);
+
+  console.log(userData.firstName);
 
   const newPatient = await prisma.patient.create({
     data: {
@@ -26,23 +33,26 @@ exports.createPatientService = async (data) => {
       preferredName,
       user: { create: { ...userData, role: PATIENT } },
     },
-    select: SAFE_PATIENT_SELECT,
+    select: PATIENT_DETAILS_SELECT,
   });
 
-  if (tempPassword) console.log(tempPassword); // simula enviar por correo
+  // Simula enviar correo: credenciales al nuevo usuario
+  console.log(
+    `[email:simulated] To: ${newPatient.user.email} | Welcome! Your username is ${newPatient.user.username}. ${tempPassword ? "\n Your temp password is : " + tempPassword : ""}`,
+  );
 
-  return flattenProfile(newPatient);
+  return flattenUser(newPatient);
 };
 
 exports.getPatientService = async (id) => {
   const patient = await prisma.patient.findUnique({
     where: { id, user: { deletedAt: null } },
-    select: SAFE_PATIENT_SELECT,
+    select: PATIENT_DETAILS_SELECT,
   });
 
   assertFound(patient, "Patient");
 
-  return flattenProfile(patient);
+  return flattenUser(patient);
 };
 
 exports.listPatientsService = async (query) => {
@@ -61,15 +71,14 @@ exports.listPatientsService = async (query) => {
     insuranceNumber,
     preferredName,
     hasPreferredName,
+    deleted,
   } = query;
 
-  const createdAt = buildDateRangeFilter(createdFrom, createdTo);
-  const updatedAt = buildDateRangeFilter(updatedFrom, updatedTo);
-
-  const contains = (value) => ({ contains: value, mode: "insensitive" });
+  const createdAt = buildRangeFilter(createdFrom, createdTo);
+  const updatedAt = buildRangeFilter(updatedFrom, updatedTo);
 
   const userFilter = {
-    deletedAt: null,
+    deletedAt: deletedAtFilter(deleted),
     ...(firstName && { firstName: contains(firstName) }),
     ...(lastName && { lastName: contains(lastName) }),
     ...(username && { username: contains(username) }),
@@ -112,12 +121,12 @@ exports.listPatientsService = async (query) => {
       ...(insuranceNumber && { insuranceNumber: contains(insuranceNumber) }),
       ...(conditions.length > 0 && { AND: conditions }),
     },
-    select: SAFE_PATIENT_SELECT,
+    select: deleted ? PATIENT_FULL_SELECT : PATIENT_DETAILS_SELECT,
     orderBy: { id: "asc" },
     take: 100,
   });
 
-  return patients.map(flattenProfile);
+  return patients.map(flattenUser);
 };
 
 exports.updatePatientService = async (id, data) => {
@@ -130,25 +139,30 @@ exports.updatePatientService = async (id, data) => {
       preferredName,
       ...(Object.keys(account).length > 0 && { user: { update: account } }),
     },
-    select: SAFE_PATIENT_SELECT,
+    select: PATIENT_DETAILS_SELECT,
   });
 
-  return flattenProfile(updatedPatient);
+  return flattenUser(updatedPatient);
 };
 
-exports.deletePatientService = async (id) => {
+exports.deletePatientService = async (id, currentUserId) => {
   const now = new Date();
-  const today = new Date(now.toISOString().slice(0, 10)); // inicio del día en UTC
 
-  await prisma.$transaction([
-    prisma.user.update({
+  await prisma.$transaction(async (tx) => {
+    const { count } = await tx.user.updateMany({
       where: { id, deletedAt: null, role: PATIENT },
-      data: { deletedAt: now },
-    }),
+      data: { isActive: false, deletedAt: now },
+    });
 
-    prisma.appointment.updateMany({
-      where: { patientId: id, status: SCHEDULED, date: { gte: today } },
-      data: { status: CANCELLED, cancelledAt: now },
-    }),
-  ]);
+    assertUpdated(count);
+
+    await tx.appointment.updateMany({
+      where: { patientId: id, status: SCHEDULED, startsAt: { gte: now } },
+      data: {
+        status: CANCELLED,
+        statusChangedAt: now,
+        statusChangedById: currentUserId,
+      },
+    });
+  });
 };

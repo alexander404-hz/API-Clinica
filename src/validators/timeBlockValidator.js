@@ -1,12 +1,59 @@
 const AppError = require("../utils/AppError");
-const { fieldChecker } = require("./validatorUtils");
+
+const { VALID_REPLACE } = require("../constants/timeblock");
 const { VALIDATION_ERROR } = require("../constants/errorCodes");
+const { TIME_PATTERN } = require("../constants/pattern");
+const { fieldChecker } = require("./validatorUtils");
+
 const {
-  validateTimeRange,
   validateDate,
-  validateTime,
-  validateBoolean,
+  validateList,
+  validateString,
 } = require("./commonValidator");
+
+const validateTime = (value, label = "Time", required = false) => {
+  const result = validateString(value, label, required);
+  if (result.error || result.value === undefined) return result;
+
+  const time = result.value;
+
+  if (!TIME_PATTERN.test(time)) {
+    return {
+      error: `${label} must follow HH:mm format (24h).`,
+    };
+  }
+
+  const dateTime = new Date(`1970-01-01T${time}:00Z`);
+
+  return { value: dateTime };
+};
+
+const validateTimeRange = (
+  startTime,
+  endTime,
+  startLabel = "Start Time",
+  endLabel = "End time",
+  required = false,
+  { allowEqual = false } = {},
+) => {
+  const start = validateTime(startTime, startLabel, required);
+  const end = validateTime(endTime, endLabel, required);
+
+  if (start.value && end.value) {
+    const isInvalid = allowEqual
+      ? start.value > end.value
+      : start.value >= end.value;
+
+    if (isInvalid) {
+      return {
+        start,
+        end: { error: `${endLabel} must be later than ${startLabel}.` },
+      };
+    }
+  }
+
+  return { start, end };
+};
 
 const validateGenerateTimes = (
   startTime,
@@ -112,8 +159,7 @@ exports.generateTimeBlocksValidator = (body) => {
   check("startTime", times.start);
   check("endTime", times.end);
   check("duration", times.duration);
-  check("clear", validateBoolean(clear, "Clear"));
-  check("replace", validateBoolean(replace, "Replace"));
+  check("replace", validateList(replace, "Replace", VALID_REPLACE));
 
   if (errors.length > 0) {
     throw new AppError("Validation failed", 400, VALIDATION_ERROR, errors);

@@ -1,8 +1,11 @@
-const prisma = require("../prisma");
-const { SAFE_USER_SELECT } = require("../constants/user");
+const { prisma } = require("../prisma");
+
+const { USER_DETAILS_SELECT, USER_FULL_SELECT } = require("../constants/user");
+
 const {
-  buildDateRangeFilter,
+  buildRangeFilter,
   assertFound,
+  contains,
 } = require("../helpers/commonHelpers");
 
 const {
@@ -10,12 +13,13 @@ const {
   generatePassword,
   generateHashedPassword,
   assertNotSelf,
+  deletedAtFilter,
 } = require("../helpers/userHelpers");
 
-exports.prepareNewUserService = async (data) => {
+exports.prepareNewUserService = async (tx, data) => {
   const { firstName, lastName, email, password } = data;
 
-  const username = await generateUsername(firstName, lastName);
+  const username = await generateUsername(tx, firstName, lastName);
 
   const tempPassword = password ? null : generatePassword();
   const plainPassword = password || tempPassword;
@@ -29,6 +33,7 @@ exports.prepareNewUserService = async (data) => {
       username,
       email,
       password: hashedPassword,
+      ...(password && { mustChangePassword: false }),
     },
   };
 
@@ -38,10 +43,10 @@ exports.prepareNewUserService = async (data) => {
 exports.getUserService = async (id) => {
   const user = await prisma.user.findUnique({
     where: { id, deletedAt: null },
-    select: SAFE_USER_SELECT,
+    select: USER_DETAILS_SELECT,
   });
 
-  assertFound(user);
+  assertFound(user, "User");
 
   return user;
 };
@@ -59,15 +64,14 @@ exports.listUsersService = async (query) => {
     createdTo,
     updatedFrom,
     updatedTo,
+    deleted,
   } = query;
 
-  const createdAt = buildDateRangeFilter(createdFrom, createdTo);
-  const updatedAt = buildDateRangeFilter(updatedFrom, updatedTo);
-
-  const contains = (value) => ({ contains: value, mode: "insensitive" });
+  const createdAt = buildRangeFilter(createdFrom, createdTo);
+  const updatedAt = buildRangeFilter(updatedFrom, updatedTo);
 
   const userFilter = {
-    deletedAt: null,
+    deletedAt: deletedAtFilter(deleted),
     ...(firstName && { firstName: contains(firstName) }),
     ...(lastName && { lastName: contains(lastName) }),
     ...(username && { username: contains(username) }),
@@ -94,7 +98,7 @@ exports.listUsersService = async (query) => {
       }),
       ...userFilter,
     },
-    select: SAFE_USER_SELECT,
+    select: deleted ? USER_FULL_SELECT : USER_DETAILS_SELECT,
     orderBy: { id: "asc" },
     take: 100,
   });
@@ -112,7 +116,7 @@ exports.updateUserService = async (id, data, currentUserId) => {
   const updatedUser = await prisma.user.update({
     where: { id, deletedAt: null },
     data: { firstName, lastName, email, isActive },
-    select: SAFE_USER_SELECT,
+    select: USER_DETAILS_SELECT,
   });
 
   return updatedUser;
@@ -123,6 +127,6 @@ exports.deleteUserService = async (id, currentUserId) => {
 
   await prisma.user.update({
     where: { id, deletedAt: null },
-    data: { deletedAt: new Date() },
+    data: { deletedAt: new Date(), isActive: false },
   });
 };

@@ -1,5 +1,5 @@
-const { FORBIDDEN } = require("../constants/errorCodes");
 const AppError = require("../utils/AppError");
+const { FORBIDDEN } = require("../constants/errorCodes");
 
 module.exports =
   (...allowedRoles) =>

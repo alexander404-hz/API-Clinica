@@ -1,16 +1,16 @@
 const { Router } = require("express");
 const router = Router();
 
+const { Role } = require("../prisma");
+const { ADMIN } = Role;
+
 const authorize = require("../middlewares/authorize");
 const validate = require("../middlewares/validate");
 const allowFields = require("../middlewares/allowFields");
 
 const { idParamValidator } = require("../validators/validatorUtils");
-const { SELF_USER_EDITABLE_FIELDS } = require("../constants/user");
-
-const {
-  ROLES: { ADMIN },
-} = require("../constants/roles");
+const { USER_EDITABLE_FIELDS } = require("../constants/user");
+const { listLimiter } = require("../middlewares/rateLimiters");
 
 const {
   listUsersValidator,
@@ -30,13 +30,14 @@ router.get("/me", getMyProfile);
 
 router.patch(
   "/me",
-  allowFields(SELF_USER_EDITABLE_FIELDS),
+  allowFields(USER_EDITABLE_FIELDS),
   validate(updateUserValidator, "body"),
   updateMyProfile,
 );
 
 router.get(
   "/",
+  listLimiter,
   authorize(ADMIN),
   validate(listUsersValidator, "query"),
   listUsers,

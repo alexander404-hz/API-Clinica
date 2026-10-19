@@ -1,16 +1,19 @@
 const AppError = require("../utils/AppError");
+
 const { VALIDATION_ERROR } = require("../constants/errorCodes");
 const { fieldChecker } = require("./validatorUtils");
 const { validateString, validateBoolean } = require("./commonValidator");
+
+const {
+  PREFERRED_NAME_PATTERN,
+  INSURANCE_NUMBER_PATTERN,
+} = require("../constants/pattern");
 
 const {
   checkUserFieldsToCreate,
   checkUserFieldsToUpdate,
   checkUserFieldsToFilter,
 } = require("./userValidator");
-
-const PREFERRED_NAME_PATTERN = /^[\p{L}0-9]+(?:[ '-][\p{L}0-9]+)*$/u;
-const INSURANCE_NUMBER_PATTERN = /^INS-\d{4}$/;
 
 const validatePreferredName = (value) => {
   const result = validateString(value, "Preferred Name");
@@ -32,7 +35,7 @@ const validateInsuranceNumber = (value, required = false) => {
   const result = validateString(value, "Insurance number", required);
   if (result.error || result.value === undefined) return result;
 
-  const insuranceNumber = required.value.toUpperCase();
+  const insuranceNumber = result.value.toUpperCase();
 
   if (!INSURANCE_NUMBER_PATTERN.test(insuranceNumber)) {
     return { error: 'Insurance number must follow the format "INS-0001".' };
@@ -41,16 +44,20 @@ const validateInsuranceNumber = (value, required = false) => {
   return { value: insuranceNumber };
 };
 
-exports.createPatientValidator = (body) => {
+exports.checkPatientFieldsToCreate = (body, check) => {
   const { preferredName, insuranceNumber } = body;
 
+  checkUserFieldsToCreate(body, check);
+  check("insuranceNumber", validateInsuranceNumber(insuranceNumber, true));
+  check("preferredName", validatePreferredName(preferredName));
+};
+
+exports.createPatientValidator = (body) => {
   const errors = [];
   const cleaned = {};
   const check = fieldChecker(errors, cleaned);
 
-  checkUserFieldsToCreate(body, check);
-  check("insuranceNumber", validateInsuranceNumber(insuranceNumber));
-  check("preferredName", validatePreferredName(preferredName));
+  exports.checkPatientFieldsToCreate(body, check);
 
   if (errors.length > 0) {
     throw new AppError("Validation failed", 400, VALIDATION_ERROR, errors);
@@ -68,17 +75,11 @@ exports.listPatientsValidator = (query) => {
 
   check("search", validateString(search, "Search"));
   checkUserFieldsToFilter(query, check);
-  check(
-    "preferredName",
-    validatePreferredName(preferredName, "Preferred name"),
-  );
+  check("insuranceNumber", validateString(insuranceNumber, "Insurance number"));
+  check("preferredName", validateString(preferredName, "Preferred name"));
   check(
     "hasPreferredName",
     validateBoolean(hasPreferredName, "Has preferred name"),
-  );
-  check(
-    "insuranceNumber",
-    validateInsuranceNumber(insuranceNumber, "Insurance number"),
   );
 
   if (errors.length > 0) {

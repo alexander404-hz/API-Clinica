@@ -1,17 +1,16 @@
 const AppError = require("../utils/AppError");
 
-const { VALID_ROLES } = require("../constants/roles");
-const { fieldChecker } = require("./validatorUtils");
+const { VALID_ROLES, VALID_DELETED } = require("../constants/user");
 const { VALIDATION_ERROR } = require("../constants/errorCodes");
+const { NAME_PATTERN, EMAIL_PATTERN } = require("../constants/pattern");
+const { fieldChecker } = require("./validatorUtils");
 
 const {
   validateIsoDateRange,
   validateString,
   validateBoolean,
+  validateList,
 } = require("./commonValidator");
-
-const NAME_PATTERN = /^[\p{L}]+(?:[ '-][\p{L}]+)*$/u;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const validateName = (value, label = "Name", required = false) => {
   const result = validateString(value, label, required);
@@ -41,19 +40,6 @@ const validateEmail = (value, required = false) => {
   return { value: email };
 };
 
-const validateRole = (value) => {
-  const result = validateString(value, "Role");
-  if (result.error || result.value === undefined) return result;
-
-  const role = result.value.toUpperCase();
-
-  if (!VALID_ROLES.includes(role)) {
-    return { error: `Role must be one of: ${VALID_ROLES.join(", ")}.` };
-  }
-
-  return { value: role };
-};
-
 exports.checkUserFieldsToCreate = (body, check) => {
   const { firstName, lastName, email } = body;
 
@@ -73,12 +59,13 @@ exports.checkUserFieldsToFilter = (query, check) => {
     createdTo,
     updatedFrom,
     updatedTo,
+    deleted,
   } = query;
 
   check("firstName", validateName(firstName, "First name"));
   check("lastName", validateName(lastName, "Last name"));
   check("username", validateString(username, "Username"));
-  check("email", validateEmail(email, "Email"));
+  check("email", validateString(email, "Email"));
   check("isActive", validateBoolean(isActive, "Is Active"));
 
   const created = validateIsoDateRange(
@@ -100,6 +87,8 @@ exports.checkUserFieldsToFilter = (query, check) => {
 
   check("updatedFrom", updated.from);
   check("updatedTo", updated.to);
+
+  check("deleted", validateList(deleted, "Deleted", VALID_DELETED));
 };
 
 exports.listUsersValidator = (query) => {
@@ -111,7 +100,7 @@ exports.listUsersValidator = (query) => {
 
   check("search", validateString(search, "Search"));
   exports.checkUserFieldsToFilter(query, check);
-  check("role", validateRole(role));
+  check("role", validateList(role, "Role", VALID_ROLES));
 
   if (errors.length > 0) {
     throw new AppError("Validation failed.", 400, VALIDATION_ERROR, errors);

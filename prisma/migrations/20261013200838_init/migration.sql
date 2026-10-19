@@ -2,7 +2,7 @@
 CREATE TYPE "Role" AS ENUM ('ADMIN', 'PATIENT');
 
 -- CreateEnum
-CREATE TYPE "AppointmentStatus" AS ENUM ('SCHEDULED', 'CANCELLED', 'COMPLETED');
+CREATE TYPE "AppointmentStatus" AS ENUM ('SCHEDULED', 'CANCELLED', 'COMPLETED', 'NO_SHOW');
 
 -- CreateTable
 CREATE TABLE "User" (
@@ -14,9 +14,10 @@ CREATE TABLE "User" (
     "password" TEXT NOT NULL,
     "role" "Role" NOT NULL,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
-    "deletedAt" TIMESTAMP(3),
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "timeZone" TEXT NOT NULL DEFAULT 'America/El_Salvador',
+    "deletedAt" TIMESTAMPTZ(3),
+    "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMPTZ(3) NOT NULL,
 
     CONSTRAINT "User_pkey" PRIMARY KEY ("id")
 );
@@ -42,13 +43,13 @@ CREATE TABLE "TimeBlock" (
 -- CreateTable
 CREATE TABLE "Appointment" (
     "id" SERIAL NOT NULL,
-    "date" DATE NOT NULL,
-    "startTime" TIME(0) NOT NULL,
-    "endTime" TIME(0) NOT NULL,
+    "startsAt" TIMESTAMPTZ(3) NOT NULL,
+    "endsAt" TIMESTAMPTZ(3) NOT NULL,
     "status" "AppointmentStatus" NOT NULL DEFAULT 'SCHEDULED',
-    "cancelledAt" TIMESTAMP(3),
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "statusChangedAt" TIMESTAMPTZ(3),
+    "statusChangedById" INTEGER,
     "patientId" INTEGER NOT NULL,
+    "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "Appointment_pkey" PRIMARY KEY ("id")
 );
@@ -64,6 +65,9 @@ CREATE UNIQUE INDEX "Patient_insuranceNumber_key" ON "Patient"("insuranceNumber"
 
 -- AddForeignKey
 ALTER TABLE "Patient" ADD CONSTRAINT "Patient_id_fkey" FOREIGN KEY ("id") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Appointment" ADD CONSTRAINT "Appointment_statusChangedById_fkey" FOREIGN KEY ("statusChangedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Appointment" ADD CONSTRAINT "Appointment_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

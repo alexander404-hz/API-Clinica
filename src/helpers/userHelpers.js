@@ -1,21 +1,36 @@
-const prisma = require("../prisma");
-
 const AppError = require("../utils/AppError");
+
+const { FORBIDDEN, NOT_FOUND } = require("../constants/errorCodes");
+const { SALT_ROUNDS } = require("../constants/security");
+const { DELETED_FILTER } = require("../constants/user");
+const { ONLY, INCLUDE } = DELETED_FILTER;
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
-const { SALT_ROUNDS } = require("../constants/security");
-const { FORBIDDEN } = require("../constants/errorCodes");
 
-exports.generateUsername = async (firstName, lastName) => {
-  const createdAt = new Date();
-  const year = String(createdAt.getFullYear()).slice(-2);
-  const initials = `${firstName[0]}${lastName[0]}`.toUpperCase();
+const toAsciiUpperInitial = (text = "") => {
+  const clean = String(text)
+    .normalize("NFD") // separa la letra de su tilde: "Á" -> "A" + "´"
+    .replace(/[\u0300-\u036f]/g, "") // elimina las tildes y diéresis
+    .replace(/[^a-zA-Z]/g, ""); // deja solo letras A-Z (quita espacios, números, símbolos)
 
-  const userCount = await prisma.user.count({
-    where: { username: { startsWith: `${initials}${year}` } },
+  return clean[0]?.toUpperCase() ?? "";
+};
+
+exports.generateUsername = async (tx, firstName, lastName) => {
+  const year = String(new Date().getFullYear()).slice(-2);
+  const initials = `${toAsciiUpperInitial(firstName)}${toAsciiUpperInitial(lastName)}`;
+
+  const prefix = `${initials}${year}`;
+
+  const last = await tx.user.findFirst({
+    where: { username: { startsWith: prefix } },
+    orderBy: { username: "desc" },
+    select: { username: true },
   });
 
-  return `${initials}${year}${String(userCount + 1).padStart(3, "0")}`;
+  const next = last ? Number(last.username.slice(prefix.length)) + 1 : 1;
+
+  return `${prefix}${String(next).padStart(3, "0")}`;
 };
 
 exports.generatePassword = (length = 4) => {
@@ -32,9 +47,29 @@ exports.assertNotSelf = (id, currentUserId, label) => {
   }
 };
 
-exports.flattenProfile = (userRole) => {
-  const { user, ...profile } = userRole;
-  const roleResponse = { ...user, ...profile };
+exports.flattenUser = (userRole) => {
+  const { user, ...rest } = userRole;
+  const { id, firstName, lastName, username, email, role, ...profile } = user;
 
-  return roleResponse;
+  const flattenedUser = {
+    id,
+    firstName,
+    lastName,
+    username,
+    email,
+    ...rest,
+    ...profile,
+  };
+
+  return flattenedUser;
+};
+
+exports.deletedAtFilter = (deleted) => {
+  if (deleted === ONLY) return { not: null };
+  if (deleted === INCLUDE) return undefined;
+  return null;
+};
+
+exports.assertUpdated = (count) => {
+  if (count === 0) throw new AppError("Patient not found", 404, NOT_FOUND);
 };

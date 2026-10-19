@@ -1,14 +1,13 @@
 const { Router } = require("express");
 const router = Router();
 
+const { Role } = require("../prisma");
+const { ADMIN } = Role;
+
 const authorize = require("../middlewares/authorize");
 const validate = require("../middlewares/validate");
 
 const { idParamValidator } = require("../validators/validatorUtils");
-
-const {
-  ROLES: { ADMIN },
-} = require("../constants/roles");
 
 const {
   createTimeBlockValidator,

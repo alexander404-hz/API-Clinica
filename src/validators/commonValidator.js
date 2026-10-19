@@ -1,8 +1,8 @@
-const MAX_INT = 2147483647;
-const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
-const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
-const ISO_DATE_PATTERN =
-  /^(\d{4})-(\d{2})-(\d{2})(?:T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d))?$/;
+const {
+  DATE_PATTERN,
+  ISO_DATE_PATTERN,
+  ISO_DATE_TIME_PATTERN,
+} = require("../constants/pattern");
 
 function isValidCalendarDate(year, month, day) {
   const check = new Date(Date.UTC(year, month - 1, day));
@@ -14,24 +14,12 @@ function isValidCalendarDate(year, month, day) {
   );
 }
 
-exports.validateId = (value) => {
-  if (typeof value !== "string" || !/^\d+$/.test(value)) {
-    return { error: "Id must be a positive integer." };
-  }
-
-  const id = Number(value);
-  if (id < 1 || id > MAX_INT) {
-    return { error: "Id must be a positive integer." };
-  }
-
-  return { value: id };
-};
-
 exports.validateString = (
   value,
   label = "Field",
   required = false,
   max = 50,
+  isAPassword = false,
 ) => {
   if (value === undefined || value === null) {
     return required ? { error: `${label} is required.` } : { value: undefined };
@@ -41,7 +29,7 @@ exports.validateString = (
     return { error: `${label} must be a text value.` };
   }
 
-  const text = value.trim();
+  const text = isAPassword ? value : value.trim();
 
   if (!text) {
     return required
@@ -54,6 +42,51 @@ exports.validateString = (
   }
 
   return { value: text };
+};
+
+function validateIntegerValue(value, label, max) {
+  if (typeof value !== "number" || !Number.isSafeInteger(value)) {
+    return { error: `${label} must be an integer.` };
+  }
+
+  if (value < 1) {
+    return { error: `${label} must be a positive integer.` };
+  }
+
+  if (value > max) {
+    return { error: `${label} must be at most ${max}.` };
+  }
+
+  return { value };
+}
+
+exports.validateInteger = (
+  value,
+  label = "Field",
+  required = false,
+  max = Number.MAX_SAFE_INTEGER,
+) => {
+  if (value === undefined || value === null) {
+    return required ? { error: `${label} is required.` } : { value: undefined };
+  }
+
+  const int = validateIntegerValue(value, label, max);
+
+  return int;
+};
+
+exports.validateIntegerParam = (
+  value,
+  label = "Field",
+  required = false,
+  max = Number.MAX_SAFE_INTEGER,
+) => {
+  const result = exports.validateString(value, label, required);
+  if (result.error || result.value === undefined) return result;
+
+  const int = validateIntegerValue(Number(result.value), label, max);
+
+  return int;
 };
 
 exports.validateBoolean = (value, label = "Boolean", required = false) => {
@@ -69,13 +102,20 @@ exports.validateBoolean = (value, label = "Boolean", required = false) => {
   return { value: bool === "true" };
 };
 
-function validateDateValue(
-  value,
-  label = "Date",
-  required = false,
-  pattern,
-  example,
-) {
+exports.validateList = (value, label, list, required = false) => {
+  const result = exports.validateString(value, label, required);
+  if (result.error || result.value === undefined) return result;
+
+  const item = result.value.toUpperCase();
+
+  if (!list.includes(item)) {
+    return { error: `${label} must be one of: ${list.join(", ")}.` };
+  }
+
+  return { value: item };
+};
+
+function validatePatternedDate(value, label, pattern, example, required) {
   const result = exports.validateString(value, label, required);
   if (result.error || result.value === undefined) return result;
 
@@ -101,75 +141,66 @@ function validateDateValue(
   return { value: date };
 }
 
-exports.validateDate = (value, label, required = false) =>
-  validateDateValue(value, label, required, DATE_PATTERN, "YYYY-MM-DD");
+exports.validateDate = (value, label = "Date", required = false) =>
+  validatePatternedDate(value, label, DATE_PATTERN, "YYYY-MM-DD", required);
 
-exports.validateIsoDate = (value, label, required = false) =>
-  validateDateValue(
+exports.validateIsoDate = (value, label = "ISO Date", required = false) =>
+  validatePatternedDate(
     value,
     label,
-    required,
     ISO_DATE_PATTERN,
     "YYYY-MM-DD or YYYY-MM-DDTHH:mm:ssZ (ISO 8601)",
+    required,
   );
 
-exports.validateIsoDateRange = (
-  fromDate,
-  toDate,
-  fromLabel = "From Date",
-  toLabel = "To Date",
+exports.validateIsoDateTime = (
+  value,
+  label = "ISO Date Time",
   required = false,
-) => {
-  const from = exports.validateIsoDate(fromDate, fromLabel, required);
-  const to = exports.validateIsoDate(toDate, toLabel, required);
+) =>
+  validatePatternedDate(
+    value,
+    label,
+    ISO_DATE_TIME_PATTERN,
+    "YYYY-MM-DDTHH:mm:ssZ or YYYY-MM-DDTHH:mm:ss-06:00 (ISO 8601)",
+    required,
+  );
 
-  if (to.value && toDate.length === 10) {
-    to.value.setUTCHours(23, 59, 59, 999);
-  }
+function buildDateRangeValidator(validate, adjustTo) {
+  return (
+    fromDate,
+    toDate,
+    fromLabel = "From Date",
+    toLabel = "To Date",
+    required = false,
+  ) => {
+    const from = validate(fromDate, fromLabel, required);
+    const to = validate(toDate, toLabel, required);
 
-  if (from.value && to.value && from.value > to.value) {
-    return {
-      from,
-      to: { error: `${toLabel} cannot be earlier than ${fromLabel}.` },
-    };
-  }
+    if (adjustTo) adjustTo(to, toDate);
 
-  return { from, to };
-};
+    if (from.value && to.value && from.value > to.value) {
+      return {
+        from,
+        to: { error: `${toLabel} cannot be earlier than ${fromLabel}.` },
+      };
+    }
 
-exports.validateTime = (value, label = "Time", required = false) => {
-  const result = exports.validateString(value, label, required);
-  if (result.error || result.value === undefined) return result;
+    return { from, to };
+  };
+}
 
-  const time = result.value;
+exports.validateDateRange = buildDateRangeValidator(exports.validateDate);
 
-  if (!TIME_PATTERN.test(time)) {
-    return {
-      error: `${label} must follow HH:mm format (24h).`,
-    };
-  }
+exports.validateIsoDateRange = buildDateRangeValidator(
+  exports.validateIsoDate,
+  (to, toRaw) => {
+    if (to.value && toRaw.length === 10) {
+      to.value.setUTCHours(23, 59, 59, 999);
+    }
+  },
+);
 
-  const dateTime = new Date(`1970-01-01T${time}:00Z`);
-
-  return { value: dateTime };
-};
-
-exports.validateTimeRange = (
-  startTime,
-  endTime,
-  startLabel = "Start Time",
-  endLabel = "End time",
-  required = false,
-) => {
-  const start = exports.validateTime(startTime, startLabel, required);
-  const end = exports.validateTime(endTime, endLabel, required);
-
-  if (start.value && end.value && start.value >= end.value) {
-    return {
-      start,
-      end: { error: `${endLabel} must be later than ${startLabel}.` },
-    };
-  }
-
-  return { start, end };
-};
+exports.validateIsoDateTimeRange = buildDateRangeValidator(
+  exports.validateIsoDateTime,
+);

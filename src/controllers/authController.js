@@ -1,20 +1,38 @@
-const { registerUser, loginUser } = require("../services/authService");
+const {
+  registerPatientService,
+  loginUserService,
+  changePasswordService,
+} = require("../services/authService");
 
-exports.register = async (req, res) => {
-  try {
-    await registerUser(req.body);
-    return res.status(201).json({ message: "User registered Successfully" });
-  } catch (error) {
-    return res.status(400).json({ error: error.message });
-  }
+exports.registerPatient = (req, res) => {
+  registerPatientService(req.validated.body).catch((err) =>
+    console.error("Unhandled error in registration:", err),
+  );
+
+  res.status(202).json({
+    message:
+      "Thanks for registering! We've sent the next steps to your email. Please check your inbox.",
+  });
 };
 
 exports.login = async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    const token = await loginUser(email, password);
-    return res.json({ token });
-  } catch (error) {
-    return res.status(400).json({ error: error.message });
-  }
+  const token = await loginUserService(
+    req.account,
+    req.validated.body.password,
+  );
+
+  return res.json({
+    token,
+    user: {
+      id: req.account.id,
+      username: req.account.username,
+      role: req.account.role,
+      mustChangePassword: req.account.mustChangePassword,
+    },
+  });
+};
+
+exports.changePassword = async (req, res) => {
+  const token = await changePasswordService(req.user.id, req.validated.body);
+  res.json({ token });
 };

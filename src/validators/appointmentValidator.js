@@ -1,119 +1,113 @@
 const AppError = require("../utils/AppError");
 
-function parseAppointmentDate(date) {
-  const parsedDate = new Date(date);
+const { VALIDATION_ERROR } = require("../constants/errorCodes");
+const { VALID_APPOINTMENT_STATUS } = require("../constants/appointment");
+const { fieldChecker } = require("./validatorUtils");
 
-  if (isNaN(parsedDate.getTime())) {
-    throw new AppError("date no es una fecha válida", 400);
+const {
+  validateInteger,
+  validateIsoDateRange,
+  validateString,
+  validateList,
+  validateIntegerParam,
+  validateIsoDateTimeRange,
+} = require("./commonValidator");
+
+exports.createAppointmentValidator = (body) => {
+  const { startsAt, endsAt, patientId } = body;
+
+  const errors = [];
+  const cleaned = {};
+  const check = fieldChecker(errors, cleaned);
+
+  const dateTime = validateIsoDateTimeRange(
+    startsAt,
+    endsAt,
+    "Starts At",
+    "Ends At",
+    true,
+  );
+
+  check("startsAt", dateTime.from);
+  check("endsAt", dateTime.to);
+
+  check("patientId", validateInteger(patientId, "Patient Id"));
+
+  if (errors.length > 0) {
+    throw new AppError("Validation failed", 400, VALIDATION_ERROR, errors);
   }
 
-  return parsedDate;
-}
-
-function parseTimeBlockId(timeBlockId) {
-  const parsedTimeBlockId = parseInt(timeBlockId, 10);
-
-  if (isNaN(parsedTimeBlockId)) {
-    throw new AppError("timeBlockId debe ser un número válido", 400);
-  }
-
-  return parsedTimeBlockId;
-}
-
-//mover despues a helpers
-function resolvePatientId(data, user) {
-  const allowedRolesToAssign = ["ADMIN"];
-
-  if (!allowedRolesToAssign.includes(user.role)) {
-    return user.id;
-  }
-
-  if (!data.patientId) {
-    throw new AppError("Se requiere el id del paciente", 400);
-  }
-
-  const parsedPatientId = parseInt(data.patientId, 10);
-
-  if (isNaN(parsedPatientId) || parsedPatientId <= 0) {
-    throw new AppError("patientId debe ser un número entero positivo", 400);
-  }
-
-  return parsedPatientId;
-}
-
-// --- Validators públicos ---
-
-exports.appointmentIdValidator = (id) => {
-  const parsedId = parseInt(id, 10);
-
-  if (isNaN(parsedId) || parsedId <= 0) {
-    throw new AppError(
-      "El id de la cita debe ser un número entero positivo",
-      400,
-    );
-  }
-
-  return parsedId;
+  return cleaned;
 };
 
-exports.createAppointmentValidator = (data, user) => {
-  const { date, timeBlockId } = data;
+exports.listAppointmentsValidator = (query) => {
+  const {
+    search,
+    startsFrom,
+    startsTo,
+    endsFrom,
+    endsTo,
+    status,
+    statusChangedFrom,
+    statusChangedTo,
+    statusChangedById,
+    patientId,
+    createdFrom,
+    createdTo,
+  } = query;
 
-  if (!date || !timeBlockId) {
-    throw new AppError("date y timeBlockId son requeridos", 400);
+  const errors = [];
+  const cleaned = {};
+  const check = fieldChecker(errors, cleaned);
+
+  check("search", validateString(search, "Search"));
+
+  const starts = validateIsoDateRange(
+    startsFrom,
+    startsTo,
+    "Starts From",
+    "Starts To",
+  );
+
+  check("startsFrom", starts.from);
+  check("startsTo", starts.to);
+
+  const ends = validateIsoDateRange(endsFrom, endsTo, "Ends From", "Ends To");
+
+  check("endsFrom", ends.from);
+  check("endsTo", ends.to);
+
+  check("status", validateList(status, "Status", VALID_APPOINTMENT_STATUS));
+
+  const statusChanged = validateIsoDateRange(
+    statusChangedFrom,
+    statusChangedTo,
+    "Status Changed From",
+    "Status Changed To",
+  );
+
+  check("statusChangedFrom", statusChanged.from);
+  check("statusChangedTo", statusChanged.to);
+
+  check(
+    "statusChangedById",
+    validateIntegerParam(statusChangedById, "Status Changed By Id"),
+  );
+  check("patientId", validateIntegerParam(patientId, "Patient Id"));
+
+  const created = validateIsoDateRange(
+    createdFrom,
+    createdTo,
+    "Created From",
+    "Created To",
+  );
+
+  check("createdFrom", created.from);
+  check("createdTo", created.to);
+
+  if (errors.length > 0) {
+    throw new AppError("Validation failed.", 400, VALIDATION_ERROR, errors);
   }
 
-  return {
-    date: parseAppointmentDate(date),
-    timeBlockId: parseTimeBlockId(timeBlockId),
-    patientId: resolvePatientId(data, user),
-  };
-};
-
-exports.listAppointmentsValidator = (query, user) => {
-  const { date, timeBlockId, patientId } = query;
-  const filters = {};
-
-  if (date !== undefined) {
-    filters.date = parseAppointmentDate(date);
-  }
-
-  if (timeBlockId !== undefined) {
-    filters.timeBlockId = parseTimeBlockId(timeBlockId);
-  }
-
-  if (patientId !== undefined && user.role === "ADMIN") {
-    const parsedPatientId = parseInt(patientId, 10);
-
-    if (isNaN(parsedPatientId) || parsedPatientId <= 0) {
-      throw new AppError("patientId debe ser un número entero positivo", 400);
-    }
-
-    filters.patientId = parsedPatientId;
-  }
-
-  return filters;
-};
-
-exports.updateAppointmentValidator = (data) => {
-  const { date, timeBlockId } = data;
-
-  if (date === undefined && timeBlockId === undefined) {
-    throw new AppError(
-      "Debes enviar al menos un campo para actualizar (date o timeBlockId)",
-      400,
-    );
-  }
-
-  const result = {};
-
-  if (date !== undefined) {
-    result.date = parseAppointmentDate(date);
-  }
-
-  if (timeBlockId !== undefined) {
-    result.timeBlockId = parseTimeBlockId(timeBlockId);
-  }
-
-  return result;
+  return cleaned;
 };

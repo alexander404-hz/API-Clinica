@@ -1,6 +1,7 @@
 const AppError = require("../utils/AppError");
+
 const { VALIDATION_ERROR } = require("../constants/errorCodes");
-const { checkUserFields } = require("./userValidator");
+const { checkUserFieldsToCreate } = require("./userValidator");
 const { fieldChecker } = require("./validatorUtils");
 
 exports.createAdminValidator = (body) => {
@@ -8,7 +9,7 @@ exports.createAdminValidator = (body) => {
   const cleaned = {};
   const check = fieldChecker(errors, cleaned);
 
-  checkUserFields(body, check);
+  checkUserFieldsToCreate(body, check);
 
   if (errors.length > 0) {
     throw new AppError("Validation failed", 400, VALIDATION_ERROR, errors);

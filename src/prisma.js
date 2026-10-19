@@ -1,3 +1,9 @@
-const { PrismaClient } = require("../generated/prisma");
+const {
+  PrismaClient,
+  AppointmentStatus,
+  Role,
+} = require("../generated/prisma");
 
-module.exports = new PrismaClient();
+const prisma = new PrismaClient();
+
+module.exports = { prisma, AppointmentStatus, Role };

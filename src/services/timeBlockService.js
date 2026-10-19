@@ -1,29 +1,32 @@
-const prisma = require("../prisma");
-const {
-  assertNoOverlap,
-  serialize,
-  generateTimeBlocks,
-} = require("../helpers/timeBlockHelpers");
-const { assertFound } = require("../helpers/commonHelpers");
+const { prisma, AppointmentStatus } = require("../prisma");
+const { CANCELLED } = AppointmentStatus;
+
+const { REPLACE_FILTER } = require("../constants/timeblock");
+const { NONE, OVERLAP, ALL } = REPLACE_FILTER;
+
+const { assertFound, getClinicDayRange } = require("../helpers/commonHelpers");
 
 const {
-  STATUS: { SCHEDULED },
-} = require("../constants/AppointmentStatus");
+  assertNoOverlap,
+  serializeTimeBlock,
+  generateTimeBlocks,
+  getBookingWindow,
+  toDayTimeBlocks,
+  filterBookableTimeBlocks,
+  filterAvailableTimeBlocks,
+  assertDayWithinBookingWindow,
+} = require("../helpers/timeBlockHelpers");
 
 exports.createTimeBlockService = async (data) => {
   const { startTime, endTime } = data;
 
-  const newTimeBlock = await prisma.$transaction(async (tx) => {
-    await assertNoOverlap(tx, startTime, endTime);
+  await assertNoOverlap(prisma, startTime, endTime);
 
-    const created = await tx.timeBlock.create({
-      data: { startTime, endTime },
-    });
-
-    return created;
+  const newTimeBlock = await prisma.timeBlock.create({
+    data: { startTime, endTime },
   });
 
-  return serialize(newTimeBlock);
+  return serializeTimeBlock(newTimeBlock);
 };
 
 exports.getTimeBlockService = async (id) => {
@@ -33,7 +36,7 @@ exports.getTimeBlockService = async (id) => {
 
   assertFound(timeBlock, "TimeBlock");
 
-  return serialize(timeBlock);
+  return serializeTimeBlock(timeBlock);
 };
 
 exports.listTimeBlocksService = async () => {
@@ -41,33 +44,24 @@ exports.listTimeBlocksService = async () => {
     orderBy: { startTime: "asc" },
   });
 
-  return timeBlocks.map(serialize);
+  return timeBlocks.map(serializeTimeBlock);
 };
 
 exports.updateTimeBlockService = async (id, data) => {
-  const { startTime, endTime } = data;
+  const current = await prisma.timeBlock.findUnique({ where: { id } });
+  assertFound(current, "TimeBlock");
 
-  const updatedTimeBlock = await prisma.$transaction(async (tx) => {
-    const current = await tx.timeBlock.findUnique({
-      where: { id },
-    });
+  const startTime = data.startTime ?? current.startTime;
+  const endTime = data.endTime ?? current.endTime;
 
-    assertFound(current, "TimeBlock");
+  await assertNoOverlap(prisma, startTime, endTime, id);
 
-    const start = startTime ?? current.startTime;
-    const end = endTime ?? current.endTime;
-
-    await assertNoOverlap(tx, start, end, id);
-
-    const updated = await tx.timeBlock.update({
-      where: { id },
-      data: { startTime, endTime },
-    });
-
-    return updated;
+  const updated = await prisma.timeBlock.update({
+    where: { id },
+    data: { startTime, endTime },
   });
 
-  return serialize(updatedTimeBlock);
+  return serializeTimeBlock(updated);
 };
 
 exports.deleteTimeBlockService = async (id) => {
@@ -76,37 +70,47 @@ exports.deleteTimeBlockService = async (id) => {
   });
 };
 
-exports.listAvailableTimeBlocksService = async (date) => {
+exports.listAvailableTimeBlocksService = async (date, currentUser) => {
+  const { dayStart, dayEnd } = getClinicDayRange(date);
+  const bookingWindow = getBookingWindow(currentUser, new Date());
+
+  assertDayWithinBookingWindow(dayStart, dayEnd, bookingWindow);
+
   const [timeBlocks, appointments] = await Promise.all([
-    prisma.timeBlock.findMany({
-      orderBy: { startTime: "asc" },
-    }),
+    prisma.timeBlock.findMany({ orderBy: { startTime: "asc" } }),
     prisma.appointment.findMany({
-      where: { date, status: SCHEDULED },
+      where: {
+        status: { not: CANCELLED },
+        startsAt: { lt: dayEnd },
+        endsAt: { gt: dayStart },
+      },
     }),
   ]);
 
-  const availableTimeBlocks = timeBlocks.filter(
-    (timeBlock) =>
-      !appointments.some(
-        (appointment) =>
-          timeBlock.startTime < appointment.endTime &&
-          timeBlock.endTime > appointment.startTime,
-      ),
+  const dayTimeBlocks = toDayTimeBlocks(timeBlocks, dayStart);
+
+  const bookableTimeBlocks = filterBookableTimeBlocks(
+    dayTimeBlocks,
+    bookingWindow,
   );
 
-  return availableTimeBlocks.map(serialize);
+  const availableTimeBlocks = filterAvailableTimeBlocks(
+    bookableTimeBlocks,
+    appointments,
+  );
+
+  return availableTimeBlocks;
 };
 
 exports.generateTimeBlocksService = async (data) => {
-  const { startTime, endTime, duration, clear = false, replace = false } = data;
+  const { startTime, endTime, duration, replace = NONE } = data;
 
   const generatedTimeBlocks = generateTimeBlocks(startTime, endTime, duration);
 
   const newTimeBlocks = await prisma.$transaction(async (tx) => {
-    if (clear) {
+    if (replace === ALL) {
       await tx.timeBlock.deleteMany();
-    } else if (replace) {
+    } else if (replace === OVERLAP) {
       await tx.timeBlock.deleteMany({
         where: { startTime: { lt: endTime }, endTime: { gt: startTime } },
       });
@@ -124,5 +128,5 @@ exports.generateTimeBlocksService = async (data) => {
     return created;
   });
 
-  return newTimeBlocks.map(serialize);
+  return newTimeBlocks.map(serializeTimeBlock);
 };

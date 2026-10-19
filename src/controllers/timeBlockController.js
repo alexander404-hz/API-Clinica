@@ -11,6 +11,7 @@ const {
 exports.listAvailableTimeBlocks = async (req, res) => {
   const availableTimeBlocks = await listAvailableTimeBlocksService(
     req.validated.query.date,
+    req.user,
   );
   res.status(200).json(availableTimeBlocks);
 };

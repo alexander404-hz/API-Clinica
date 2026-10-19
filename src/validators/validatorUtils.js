@@ -1,10 +1,10 @@
 const AppError = require("../utils/AppError");
 
-const { validateId } = require("./commonValidator");
+const { validateIntegerParam } = require("./commonValidator");
 const { VALIDATION_ERROR } = require("../constants/errorCodes");
 
 exports.idParamValidator = (params) => {
-  const result = validateId(params.id);
+  const result = validateIntegerParam(params.id, "Id");
 
   if (result.error) {
     throw new AppError("Validation failed.", 400, VALIDATION_ERROR, [

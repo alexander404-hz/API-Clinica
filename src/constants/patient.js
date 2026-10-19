@@ -1,28 +1,46 @@
-const {
-  ROLES: { ADMIN, PATIENT },
-} = require("../constants/roles");
+const { Role } = require("../prisma");
+const { ADMIN, PATIENT } = Role;
 
-const { SELF_USER_EDITABLE_FIELDS, SAFE_USER_SELECT } = require("./user");
+const {
+  USER_EDITABLE_FIELDS,
+  USER_BASE_SELECT,
+  USER_DETAILS_SELECT,
+  USER_FULL_SELECT,
+} = require("./user");
 
 const PATIENT_EDITABLE_FIELDS = {
   [ADMIN]: ["insuranceNumber", "preferredName"],
   [PATIENT]: ["preferredName"],
 };
 
-exports.SELF_PATIENT_EDITABLE_FIELDS = Object.freeze({
+exports.PATIENT_EDITABLE_FIELDS = Object.freeze({
   [ADMIN]: Object.freeze([
-    ...(SELF_USER_EDITABLE_FIELDS[ADMIN] || []),
+    ...(USER_EDITABLE_FIELDS[ADMIN] || []),
     ...PATIENT_EDITABLE_FIELDS[ADMIN],
   ]),
   [PATIENT]: Object.freeze([
-    ...(SELF_USER_EDITABLE_FIELDS[PATIENT] || []),
+    ...(USER_EDITABLE_FIELDS[PATIENT] || []),
     ...PATIENT_EDITABLE_FIELDS[PATIENT],
   ]),
 });
 
-exports.SAFE_PATIENT_SELECT = Object.freeze({
+exports.PATIENT_BASE_SELECT = Object.freeze({
   id: true,
+  user: { select: USER_BASE_SELECT },
   insuranceNumber: true,
   preferredName: true,
-  user: { select: SAFE_USER_SELECT },
+});
+
+exports.PATIENT_DETAILS_SELECT = Object.freeze({
+  id: true,
+  user: { select: USER_DETAILS_SELECT },
+  insuranceNumber: true,
+  preferredName: true,
+});
+
+exports.PATIENT_FULL_SELECT = Object.freeze({
+  id: true,
+  user: { select: USER_FULL_SELECT },
+  insuranceNumber: true,
+  preferredName: true,
 });

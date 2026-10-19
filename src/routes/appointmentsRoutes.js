@@ -1,20 +1,61 @@
-const authorize = require("../middlewares/authorize");
 const { Router } = require("express");
+const router = Router();
+
+const { Role } = require("../prisma");
+const { ADMIN, PATIENT } = Role;
+
+const authorize = require("../middlewares/authorize");
+const validate = require("../middlewares/validate");
+const { idParamValidator } = require("../validators/validatorUtils");
+const { listLimiter } = require("../middlewares/rateLimiters");
+
+const {
+  createAppointmentValidator,
+  listAppointmentsValidator,
+} = require("../validators/appointmentValidator");
 
 const {
   createAppointment,
-  listAppointments,
   getAppointment,
-  updateAppointment,
-  deleteAppointment,
+  listAppointments,
+  cancelAppointment,
+  completeAppointment,
 } = require("../controllers/appointmentController");
 
-const router = Router();
+router.post(
+  "/",
+  authorize(PATIENT, ADMIN),
+  validate(createAppointmentValidator, "body"),
+  createAppointment,
+);
 
-router.post("/", authorize("PATIENT", "ADMIN"), createAppointment);
-router.get("/", authorize("PATIENT", "ADMIN"), listAppointments);
-router.get("/:id", authorize("PATIENT", "ADMIN"), getAppointment);
-router.patch("/:id", authorize("PATIENT", "ADMIN"), updateAppointment);
-router.delete("/:id", authorize("ADMIN"), deleteAppointment);
+router.get(
+  "/:id",
+  authorize(PATIENT, ADMIN),
+  validate(idParamValidator, "params"),
+  getAppointment,
+);
+
+router.get(
+  "/",
+  listLimiter,
+  authorize(PATIENT, ADMIN),
+  validate(listAppointmentsValidator, "query"),
+  listAppointments,
+);
+
+router.post(
+  "/:id/cancel",
+  authorize(PATIENT, ADMIN),
+  validate(idParamValidator, "params"),
+  cancelAppointment,
+);
+
+router.post(
+  "/:id/complete",
+  authorize(ADMIN),
+  validate(idParamValidator, "params"),
+  completeAppointment,
+);
 
 module.exports = router;
