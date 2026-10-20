@@ -17,6 +17,7 @@ datasource db {
 enum Role {
   ADMIN
   PATIENT
+  SYSTEM
 }
 
 model User {
@@ -80,8 +81,8 @@ model Appointment {
 model AuditLog {
   id        Int      @id @default(autoincrement())
   actorId   String?
-  action    String   // INSERT, UPDATE, DELETE
-  entity    String   // nombre de la tabla
+  action    String // INSERT, UPDATE, DELETE
+  entity    String // nombre de la tabla
   entityId  String?
   changes   Json?
   ip        String?

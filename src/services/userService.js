@@ -43,7 +43,7 @@ exports.prepareNewUserService = async (tx, data) => {
 
 exports.getUserService = async (id) => {
   const user = await prisma.user.findUnique({
-    where: { id, deletedAt: null },
+    where: { id, deletedAt: null, NOT: { role: "SYSTEM" } },
     select: USER_DETAILS_SELECT,
   });
 
@@ -98,6 +98,7 @@ exports.listUsersService = async (query) => {
         })),
       }),
       ...userFilter,
+      NOT: { role: "SYSTEM" },
     },
     select: deleted ? USER_FULL_SELECT : USER_DETAILS_SELECT,
     orderBy: { id: "asc" },
@@ -118,7 +119,7 @@ exports.updateUserService = async (id, data, currentUserId, ip) => {
 
   const updatedUser = await withAudit(actor, async (tx) => {
     return await tx.user.update({
-      where: { id, deletedAt: null },
+      where: { id, deletedAt: null, NOT: { role: "SYSTEM" } },
       data: { firstName, lastName, email, isActive },
       select: USER_DETAILS_SELECT,
     });

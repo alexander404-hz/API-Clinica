@@ -1,4 +1,4 @@
--- This is an empty migration.-- Función genérica de auditoría
+-- This is an empty migration.-- This is an empty migration.-- Función genérica de auditoría
 CREATE OR REPLACE FUNCTION audit_row_change() RETURNS trigger AS $$
 DECLARE
   actor    text  := NULLIF(current_setting('app.user_id', true), '');
@@ -61,12 +61,16 @@ FOR EACH ROW EXECUTE FUNCTION audit_row_change();
 -- Repite el CREATE TRIGGER para "Admin", "TimeBlock", etc.
 
 -- El log es append-only: nadie puede editar ni borrar filas
-CREATE OR REPLACE FUNCTION audit_log_immutable() RETURNS trigger AS $$
+CREATE OR REPLACE FUNCTION log_immutable() RETURNS trigger AS $$
 BEGIN
-  RAISE EXCEPTION 'AuditLog is append-only';
+  RAISE EXCEPTION '% es append-only', TG_TABLE_NAME;
 END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER audit_log_no_modify
 BEFORE UPDATE OR DELETE ON "AuditLog"
-FOR EACH ROW EXECUTE FUNCTION audit_log_immutable();
+FOR EACH ROW EXECUTE FUNCTION log_immutable();
+
+CREATE TRIGGER access_log_no_modify
+BEFORE UPDATE OR DELETE ON "AccessLog"
+FOR EACH ROW EXECUTE FUNCTION log_immutable();

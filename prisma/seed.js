@@ -1,185 +1,249 @@
-// prisma/seed.js
-const bcrypt = require("bcryptjs");
-const {
-  PrismaClient,
-  Role,
-  AppointmentStatus,
-} = require("../generated/prisma");
+/**
+ * Seed idempotente (sin usuarios admin: ver bootstrap-admin.js).
+ *
+ * Ubicación sugerida: prisma/seed.js
+ * Ejecutar:           npm run seed
+ *
+ * Siempre (dev y prod):
+ *   - TimeBlocks (bloques de 30 min: 08:00-12:00 y 13:00-17:00)
+ *
+ * Solo en desarrollo (NODE_ENV === 'development'):
+ *   - Pacientes de ejemplo y citas de ejemplo
+ *
+ * Variables de entorno:
+ *   DATABASE_URL        (obligatoria)
+ *   SEED_DEV_PASSWORD   (opcional, solo dev, default "1234")
+ */
+
+const bcrypt = require('bcryptjs');
+const { PrismaClient } = require('../generated/prisma');
 
 const prisma = new PrismaClient();
 
-const CLINIC_TIME_ZONE = "America/El_Salvador";
-const CLINIC_TZ_OFFSET = "-06:00";
-const DEFAULT_PASSWORD = "1234";
+// Los datos de ejemplo solo se crean si NODE_ENV es exactamente 'development'.
+const IS_DEV = process.env.NODE_ENV === 'development';
+const BCRYPT_ROUNDS = 10;
 
-const { SCHEDULED, CANCELLED, COMPLETED, NO_SHOW } = AppointmentStatus;
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
-const pad = (n) => String(n).padStart(2, "0");
+function timeOnly(hours, minutes = 0) {
+  // Columna @db.Time(0): se guarda solo la hora, la fecha es irrelevante.
+  return new Date(Date.UTC(1970, 0, 1, hours, minutes, 0));
+}
 
-// Hora de pared de la clínica -> instante (Date), sumando `days` días a hoy
-const localInstant = (days, hour, minute = 0) => {
-  const todayLocal = new Date(
-    new Date().toLocaleDateString("en-CA", { timeZone: CLINIC_TIME_ZONE }),
-  ); // medianoche UTC del día local actual
-  todayLocal.setUTCDate(todayLocal.getUTCDate() + days);
-  const dateStr = todayLocal.toISOString().slice(0, 10);
+function addMinutes(date, minutes) {
+  return new Date(date.getTime() + minutes * 60 * 1000);
+}
 
-  const base = new Date(`${dateStr}T00:00:00${CLINIC_TZ_OFFSET}`);
-  return new Date(base.getTime() + (hour * 60 + minute) * 60 * 1000);
-};
+// ---------------------------------------------------------------------------
+// TimeBlocks (dev + prod)
+// ---------------------------------------------------------------------------
 
-// Hora de pared recurrente para columnas @db.Time(0)
-const timeOnly = (hour, minute = 0) =>
-  new Date(`1970-01-01T${pad(hour)}:${pad(minute)}:00.000Z`);
-
-const buildTimeBlocks = () => {
+function buildTimeBlocks() {
+  const ranges = [
+    { from: [8, 0], to: [12, 0] },
+    { from: [13, 0], to: [17, 0] },
+  ];
+  const stepMinutes = 30;
   const blocks = [];
-  // 9:00-12:00 y 14:00-17:00, bloques de 30 minutos
-  for (const [from, to] of [
-    [9, 12],
-    [14, 17],
-  ]) {
-    for (let minutes = from * 60; minutes < to * 60; minutes += 30) {
-      const end = minutes + 30;
-      blocks.push({
-        startTime: timeOnly(Math.floor(minutes / 60), minutes % 60),
-        endTime: timeOnly(Math.floor(end / 60), end % 60),
-      });
+
+  for (const { from, to } of ranges) {
+    let current = timeOnly(...from);
+    const end = timeOnly(...to);
+    while (current < end) {
+      const next = addMinutes(current, stepMinutes);
+      blocks.push({ startTime: current, endTime: next });
+      current = next;
     }
   }
   return blocks;
-};
+}
 
-async function main() {
-  console.log("Limpiando tablas...");
-  await prisma.$executeRawUnsafe(
-    `TRUNCATE TABLE "Appointment", "Patient", "TimeBlock", "User" RESTART IDENTITY CASCADE`,
-  );
+async function seedTimeBlocks() {
+  const blocks = buildTimeBlocks();
+  let created = 0;
 
-  const password = await bcrypt.hash(DEFAULT_PASSWORD, 10);
+  for (const block of blocks) {
+    // TimeBlock no tiene unique, así que se verifica manualmente para ser idempotente.
+    const exists = await prisma.timeBlock.findFirst({
+      where: { startTime: block.startTime, endTime: block.endTime },
+      select: { id: true },
+    });
+    if (!exists) {
+      await prisma.timeBlock.create({ data: block });
+      created++;
+    }
+  }
 
-  console.log("Creando usuarios...");
-  const admin = await prisma.user.create({
-    data: {
-      firstName: "Admin",
-      lastName: "Clinica",
-      username: "admin",
-      email: "admin@clinica.test",
-      password,
-      role: Role.ADMIN,
-    },
-  });
+  console.log(`✔ TimeBlocks: ${created} creados, ${blocks.length - created} ya existían.`);
+}
 
-  const patientsData = [
-    {
-      firstName: "Ana",
-      lastName: "Martinez",
-      username: "ana",
-      insuranceNumber: "INS-0001",
-      preferredName: "Anita",
-    },
-    {
-      firstName: "Carlos",
-      lastName: "Lopez",
-      username: "carlos",
-      insuranceNumber: "INS-0002",
-    },
-    {
-      firstName: "Lucia",
-      lastName: "Hernandez",
-      username: "lucia",
-      insuranceNumber: "INS-0003",
-    },
-  ];
+// ---------------------------------------------------------------------------
+// Datos de ejemplo (solo dev)
+// ---------------------------------------------------------------------------
 
+const DEV_PATIENTS = [
+  {
+    firstName: 'María',
+    lastName: 'Hernández',
+    username: 'maria.hernandez',
+    email: 'maria.hernandez@example.com',
+    preferredName: 'Mary',
+    insuranceNumber: 'INS-0001',
+  },
+  {
+    firstName: 'Carlos',
+    lastName: 'Ramírez',
+    username: 'carlos.ramirez',
+    email: 'carlos.ramirez@example.com',
+    preferredName: null,
+    insuranceNumber: 'INS-0002',
+  },
+  {
+    firstName: 'Ana',
+    lastName: 'López',
+    username: 'ana.lopez',
+    email: 'ana.lopez@example.com',
+    preferredName: 'Anita',
+    insuranceNumber: 'INS-0003',
+  },
+  {
+    firstName: 'José',
+    lastName: 'Martínez',
+    username: 'jose.martinez',
+    email: 'jose.martinez@example.com',
+    preferredName: null,
+    insuranceNumber: 'INS-0004',
+  },
+];
+
+async function seedDevPatients() {
+  const password = process.env.SEED_DEV_PASSWORD || '1234';
+  const hashed = await bcrypt.hash(password, BCRYPT_ROUNDS);
   const patients = [];
-  for (const { insuranceNumber, preferredName, ...user } of patientsData) {
-    const created = await prisma.user.create({
+
+  for (const p of DEV_PATIENTS) {
+    const existing = await prisma.user.findUnique({
+      where: { username: p.username },
+      include: { patientProfile: true },
+    });
+
+    if (existing) {
+      patients.push(existing.patientProfile);
+      continue;
+    }
+
+    // Crea User + Patient en una sola operación (Patient.id == User.id)
+    const user = await prisma.user.create({
       data: {
-        ...user,
-        email: `${user.username}@clinica.test`,
-        password,
-        role: Role.PATIENT,
+        firstName: p.firstName,
+        lastName: p.lastName,
+        role: 'PATIENT',
+        username: p.username,
+        email: p.email,
+        password: hashed,
+        mustChangePassword: false,
         patientProfile: {
-          create: { insuranceNumber, preferredName },
+          create: {
+            preferredName: p.preferredName,
+            insuranceNumber: p.insuranceNumber,
+          },
         },
       },
+      include: { patientProfile: true },
     });
-    patients.push(created);
+
+    patients.push(user.patientProfile);
   }
-  const [ana, carlos, lucia] = patients;
 
-  console.log("Creando bloques de horario...");
-  await prisma.timeBlock.createMany({ data: buildTimeBlocks() });
+  console.log(`✔ [dev] Pacientes de ejemplo listos: ${patients.length}.`);
+  return patients;
+}
 
-  console.log("Creando citas...");
-  const appointment = (patientId, days, hour, minute, status, extra = {}) => ({
-    patientId,
-    startsAt: localInstant(days, hour, minute),
-    endsAt: localInstant(days, hour, minute + 30),
-    status,
-    ...extra,
-  });
+async function seedDevAppointments(patients) {
+  // El admin lo crea bootstrap-admin.js; si aún no existe, statusChangedById queda null.
+  const admin = await prisma.user.findFirst({ where: { role: 'ADMIN' }, select: { id: true } });
+  const blocks = await prisma.timeBlock.findMany({ orderBy: { startTime: 'asc' } });
+  if (blocks.length === 0 || patients.length === 0) return;
 
-  await prisma.appointment.createMany({
-    data: [
-      // Futuras, dentro de la ventana de cancelación (se pueden cancelar)
-      appointment(ana.id, 5, 9, 0, SCHEDULED),
-      appointment(carlos.id, 7, 10, 30, SCHEDULED),
-      appointment(lucia.id, 10, 14, 0, SCHEDULED),
+  let created = 0;
 
-      // Próximas, fuera de la ventana (menos de 3 días: no se pueden cancelar)
-      appointment(ana.id, 1, 15, 0, SCHEDULED),
-      appointment(carlos.id, 2, 11, 0, SCHEDULED),
+  for (let i = 0; i < patients.length; i++) {
+    const patient = patients[i];
 
-      // Pasada sin marcar (para probar complete/no-show manual y el job)
-      appointment(lucia.id, -1, 9, 30, SCHEDULED),
-      appointment(ana.id, -3, 14, 30, SCHEDULED),
+    const alreadyHas = await prisma.appointment.count({ where: { patientId: patient.id } });
+    if (alreadyHas > 0) continue;
 
-      // Ya completadas por el admin
-      appointment(ana.id, -10, 10, 0, COMPLETED, {
-        statusChangedAt: localInstant(-10, 10, 45),
-        statusChangedById: admin.id,
-      }),
-      appointment(carlos.id, -7, 9, 0, COMPLETED, {
-        statusChangedAt: localInstant(-7, 9, 40),
-        statusChangedById: admin.id,
-      }),
+    const block = blocks[(i * 3) % blocks.length];
 
-      // No-show marcado por el admin
-      appointment(lucia.id, -6, 15, 30, NO_SHOW, {
-        statusChangedAt: localInstant(-6, 16, 15),
-        statusChangedById: admin.id,
-      }),
+    // Fecha base a las 00:00 UTC de "hoy"
+    const today = new Date();
+    const baseDay = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
 
-      // No-show marcado por el sistema (statusChangedById = null)
-      appointment(carlos.id, -4, 11, 0, NO_SHOW, {
-        statusChangedAt: localInstant(-3, 0, 5),
-      }),
+    const makeDate = (dayOffset, time) =>
+      new Date(
+        baseDay +
+          dayOffset * 24 * 60 * 60 * 1000 +
+          time.getUTCHours() * 60 * 60 * 1000 +
+          time.getUTCMinutes() * 60 * 1000,
+      );
 
-      // Canceladas
-      appointment(ana.id, 12, 9, 30, CANCELLED, {
-        statusChangedAt: localInstant(-1, 12, 0),
-        statusChangedById: ana.id,
-      }),
-      appointment(lucia.id, 8, 16, 0, CANCELLED, {
-        statusChangedAt: localInstant(-2, 8, 30),
-        statusChangedById: lucia.id,
-      }),
-    ],
-  });
+    // Una cita futura programada
+    await prisma.appointment.create({
+      data: {
+        patientId: patient.id,
+        startsAt: makeDate(i + 1, block.startTime),
+        endsAt: makeDate(i + 1, block.endTime),
+        status: 'SCHEDULED',
+      },
+    });
 
-  console.log("Seed completada.");
-  console.log(`  Admin:     admin@clinica.test / ${DEFAULT_PASSWORD}`);
-  console.log(
-    `  Pacientes: ana|carlos|lucia@clinica.test / ${DEFAULT_PASSWORD}`,
-  );
+    // Una cita pasada con estado variado
+    const pastStatuses = ['COMPLETED', 'NO_SHOW', 'CANCELLED', 'COMPLETED'];
+    const pastStatus = pastStatuses[i % pastStatuses.length];
+
+    await prisma.appointment.create({
+      data: {
+        patientId: patient.id,
+        startsAt: makeDate(-(i + 2), block.startTime),
+        endsAt: makeDate(-(i + 2), block.endTime),
+        status: pastStatus,
+        statusChangedAt: makeDate(-(i + 2), block.endTime),
+        statusChangedById: admin ? admin.id : null,
+      },
+    });
+
+    created += 2;
+  }
+
+  console.log(`✔ [dev] Citas de ejemplo creadas: ${created}.`);
+}
+
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
+
+async function main() {
+  console.log(`🌱 Ejecutando seed (${IS_DEV ? 'desarrollo' : 'sin datos de ejemplo'})...`);
+
+  await seedTimeBlocks();
+
+  if (IS_DEV) {
+    const patients = await seedDevPatients();
+    await seedDevAppointments(patients);
+  } else {
+    console.log('ℹ NODE_ENV no es development: se omiten datos de ejemplo.');
+  }
+
+  console.log('✅ Seed finalizado.');
 }
 
 main()
   .catch((err) => {
-    console.error("Seed fallida:", err);
-    process.exit(1);
+    console.error('❌ Error en el seed:', err);
+    process.exitCode = 1;
   })
   .finally(async () => {
     await prisma.$disconnect();

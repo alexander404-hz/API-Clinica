@@ -5,10 +5,14 @@
   "main": "index.js",
   "scripts": {
     "dev": "node --env-file .env --watch src/server.js",
-    "start": "node src/server.js",
     "seed": "node --env-file .env prisma/seed.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "postinstall": "prisma skills sync || exit 0"
+    "start": "node src/server.js",
+    "db:reset": "prisma migrate reset",
+    "db:migrate": "prisma migrate dev",
+    "db:bootstrap": "node --env-file .env prisma/bootstrap.js",
+    "db:deploy": "prisma migrate deploy",
+    "release": "prisma migrate deploy && node prisma/seed.js && node prisma/bootstrap.js",
+    "postinstall": "prisma generate"
   },
   "keywords": [],
   "author": "",
