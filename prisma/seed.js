@@ -1,5 +1,5 @@
 /**
- * Seed idempotente (sin usuarios admin: ver bootstrap-admin.js).
+ * Seed idempotente (sin usuarios admin: ver bootstrap.js).
  *
  * Ubicación sugerida: prisma/seed.js
  * Ejecutar:           npm run seed
@@ -163,7 +163,7 @@ async function seedDevPatients() {
 }
 
 async function seedDevAppointments(patients) {
-  // El admin lo crea bootstrap-admin.js; si aún no existe, statusChangedById queda null.
+  // El admin lo crea bootstrap.js; si aún no existe, statusChangedById queda null.
   const admin = await prisma.user.findFirst({ where: { role: 'ADMIN' }, select: { id: true } });
   const blocks = await prisma.timeBlock.findMany({ orderBy: { startTime: 'asc' } });
   if (blocks.length === 0 || patients.length === 0) return;

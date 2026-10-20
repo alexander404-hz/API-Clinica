@@ -14,7 +14,7 @@
  *
  * Variables de entorno (solo para el admin):
  *   DATABASE_URL            (obligatoria)
- *   SEED_ADMIN_USERNAME     (obligatoria salvo NODE_ENV=development; dev: "admin")
+ *   SEED_ADMIN_USERNAME     (obligatoria salvo NODE_ENV=development; dev: "ADMIN")
  *   SEED_ADMIN_EMAIL        (obligatoria salvo NODE_ENV=development; dev: "admin@example.com")
  *   SEED_ADMIN_PASSWORD     (obligatoria salvo NODE_ENV=development; dev: "1234")
  *   SEED_ADMIN_FIRST_NAME   (opcional, default "Admin")
@@ -72,7 +72,7 @@ async function bootstrapSystemUser() {
 }
 
 async function bootstrapAdmin() {
-  const username = requireEnv('SEED_ADMIN_USERNAME', 'admin');
+  const username = requireEnv('SEED_ADMIN_USERNAME', 'ADMIN');
   const email = requireEnv('SEED_ADMIN_EMAIL', 'admin@example.com').toLowerCase();
   const password = requireEnv('SEED_ADMIN_PASSWORD', '1234');
   const firstName = process.env.SEED_ADMIN_FIRST_NAME || 'Super';
