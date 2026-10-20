@@ -1,0 +1,3 @@
+CREATE TRIGGER audit_timeblock
+AFTER INSERT OR UPDATE OR DELETE ON "TimeBlock"
+FOR EACH ROW EXECUTE FUNCTION audit_row_change();

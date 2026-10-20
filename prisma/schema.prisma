@@ -76,3 +76,32 @@ model Appointment {
 
   createdAt DateTime @default(now()) @db.Timestamptz(3)
 }
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  actorId   String?
+  action    String   // INSERT, UPDATE, DELETE
+  entity    String   // nombre de la tabla
+  entityId  String?
+  changes   Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([actorId])
+  @@index([createdAt])
+}
+
+model AccessLog {
+  id        Int      @id @default(autoincrement())
+  actorId   String
+  entity    String
+  entityId  String?
+  query     Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([actorId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}

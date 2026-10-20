@@ -4,13 +4,13 @@ const {
   listAppointmentsService,
   cancelAppointmentService,
   completeAppointmentService,
-  markNoShowAppointmentService,
 } = require("../services/appointmentService");
 
 exports.createAppointment = async (req, res) => {
   const newAppointment = await createAppointmentService(
     req.validated.body,
     req.user,
+    req.ip,
   );
   res.status(201).json(newAppointment);
 };
@@ -35,6 +35,7 @@ exports.cancelAppointment = async (req, res) => {
   const appointment = await cancelAppointmentService(
     req.validated.params.id,
     req.user,
+    req.ip,
   );
   res.status(200).json(appointment);
 };
@@ -43,6 +44,7 @@ exports.completeAppointment = async (req, res) => {
   const appointment = await completeAppointmentService(
     req.validated.params.id,
     req.user,
+    req.ip,
   );
   res.status(200).json(appointment);
 };

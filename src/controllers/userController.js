@@ -11,7 +11,12 @@ exports.getMyProfile = async (req, res) => {
 };
 
 exports.updateMyProfile = async (req, res) => {
-  const updatedUser = await updateUserService(req.user.id, req.validated.body);
+  const updatedUser = await updateUserService(
+    req.user.id,
+    req.validated.body,
+    req.user.id,
+    req.ip,
+  );
   res.status(200).json(updatedUser);
 };
 
@@ -30,11 +35,7 @@ exports.updateUser = async (req, res) => {
     req.validated.params.id,
     req.validated.body,
     req.user.id,
+    req.ip,
   );
   res.status(200).json(updatedUser);
-};
-
-exports.deleteUser = async (req, res) => {
-  await deleteUserService(req.validated.params.id, req.user.id);
-  res.status(204).send();
 };

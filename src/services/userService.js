@@ -1,6 +1,7 @@
 const { prisma } = require("../prisma");
 
 const { USER_DETAILS_SELECT, USER_FULL_SELECT } = require("../constants/user");
+const { withAudit } = require("../utils/whithAudit");
 
 const {
   buildRangeFilter,
@@ -106,27 +107,22 @@ exports.listUsersService = async (query) => {
   return users;
 };
 
-exports.updateUserService = async (id, data, currentUserId) => {
+exports.updateUserService = async (id, data, currentUserId, ip) => {
   const { firstName, lastName, email, isActive } = data;
 
   if (isActive === false) {
     assertNotSelf(id, currentUserId, "deactivate");
   }
 
-  const updatedUser = await prisma.user.update({
-    where: { id, deletedAt: null },
-    data: { firstName, lastName, email, isActive },
-    select: USER_DETAILS_SELECT,
+  const actor = { id: currentUserId, ip };
+
+  const updatedUser = await withAudit(actor, async (tx) => {
+    return await tx.user.update({
+      where: { id, deletedAt: null },
+      data: { firstName, lastName, email, isActive },
+      select: USER_DETAILS_SELECT,
+    });
   });
 
   return updatedUser;
-};
-
-exports.deleteUserService = async (id, currentUserId) => {
-  assertNotSelf(id, currentUserId, "delete");
-
-  await prisma.user.update({
-    where: { id, deletedAt: null },
-    data: { deletedAt: new Date(), isActive: false },
-  });
 };

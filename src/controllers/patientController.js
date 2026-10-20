@@ -15,12 +15,18 @@ exports.updateMyProfile = async (req, res) => {
   const updatedPatient = await updatePatientService(
     req.user.id,
     req.validated.body,
+    req.user.id,
+    req.ip,
   );
   res.status(200).json(updatedPatient);
 };
 
 exports.createPatient = async (req, res) => {
-  const newPatient = await createPatientService(req.validated.body);
+  const newPatient = await createPatientService(
+    req.validated.body,
+    req.user.id,
+    req.ip,
+  );
   res.status(201).json(newPatient);
 };
 
@@ -38,11 +44,13 @@ exports.updatePatient = async (req, res) => {
   const updatedPatient = await updatePatientService(
     req.validated.params.id,
     req.validated.body,
+    req.user.id,
+    req.ip,
   );
   res.status(200).json(updatedPatient);
 };
 
 exports.deletePatient = async (req, res) => {
-  await deletePatientService(req.validated.params.id, req.user.id);
+  await deletePatientService(req.validated.params.id, req.user.id, req.ip);
   res.status(204).send();
 };

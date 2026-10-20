@@ -4,6 +4,7 @@ const { CANCELLED, SCHEDULED, COMPLETED, NO_SHOW } = AppointmentStatus;
 
 const { APPOINTMENT_BASE_SELECT } = require("../constants/appointment");
 const { getPatientService } = require("./patientService");
+const { withAudit } = require("../utils/whithAudit");
 
 const {
   assertFound,
@@ -25,7 +26,7 @@ const {
   assertCanCorrectNoShow,
 } = require("../helpers/appointmentHelpers");
 
-exports.createAppointmentService = async (data, currentUser) => {
+exports.createAppointmentService = async (data, currentUser, ip) => {
   const { startsAt, endsAt } = data;
 
   await assertAvailableTimeBlock(startsAt, endsAt, currentUser);
@@ -33,9 +34,13 @@ exports.createAppointmentService = async (data, currentUser) => {
   const patientId = await resolvePatientId(data.patientId, currentUser);
   await getPatientService(patientId);
 
-  const newAppointment = await prisma.appointment.create({
-    data: { startsAt, endsAt, patientId },
-    select: APPOINTMENT_BASE_SELECT,
+  const actor = { id: currentUser.id, ip };
+
+  const newAppointment = await withAudit(actor, async (tx) => {
+    return await tx.appointment.create({
+      data: { startsAt, endsAt, patientId },
+      select: APPOINTMENT_BASE_SELECT,
+    });
   });
 
   return newAppointment;
@@ -119,7 +124,7 @@ exports.listAppointmentsService = async (query, currentUser) => {
   return appointments.map(serializeAppointment);
 };
 
-const markAppointment = async (id, currentUser, status) => {
+const markAppointment = async (id, currentUser, status, ip) => {
   const appointment = await prisma.appointment.findUnique({
     where: { id, ...ownerFilter(currentUser) },
     select: { startsAt: true, status: true },
@@ -142,20 +147,24 @@ const markAppointment = async (id, currentUser, status) => {
     assertAppointmentDayStarted(appointment, now);
   }
 
-  const updated = await prisma.appointment.update({
-    where: { id, status: from, ...ownerFilter(currentUser) },
-    data: { status, statusChangedAt: now, statusChangedById: currentUser.id },
-    select: selectFor(currentUser),
+  const actor = { id: currentUser.id, ip };
+
+  const updated = await withAudit(actor, async (tx) => {
+    return await tx.appointment.update({
+      where: { id, status: from, ...ownerFilter(currentUser) },
+      data: { status, statusChangedAt: now, statusChangedById: currentUser.id },
+      select: selectFor(currentUser),
+    });
   });
 
   return serializeAppointment(updated);
 };
 
-exports.cancelAppointmentService = (id, currentUser) =>
-  markAppointment(id, currentUser, CANCELLED);
+exports.cancelAppointmentService = (id, currentUser, ip) =>
+  markAppointment(id, currentUser, CANCELLED, ip);
 
-exports.completeAppointmentService = (id, currentUser) =>
-  markAppointment(id, currentUser, COMPLETED);
+exports.completeAppointmentService = (id, currentUser, ip) =>
+  markAppointment(id, currentUser, COMPLETED, ip);
 
 exports.closeExpiredAppointmentsService = async (now = new Date()) => {
   // Inicio del día actual en hora de la clínica: todo lo anterior ya terminó
@@ -170,13 +179,17 @@ exports.closeExpiredAppointmentsService = async (now = new Date()) => {
     throw new Error('System user not found. Run the seed to create "system".');
   }
 
-  const { count } = await prisma.appointment.updateMany({
-    where: { status: SCHEDULED, startsAt: { lt: dayStart } },
-    data: {
-      status: NO_SHOW,
-      statusChangedAt: now,
-      statusChangedById: system.id,
-    },
+  const actor = { id: system.id, ip: "127.0.0.1" };
+
+  const { count } = await withAudit(actor, async (tx) => {
+    return await tx.appointment.updateMany({
+      where: { status: SCHEDULED, startsAt: { lt: dayStart } },
+      data: {
+        status: NO_SHOW,
+        statusChangedAt: now,
+        statusChangedById: system.id,
+      },
+    });
   });
 
   return count;

@@ -17,12 +17,20 @@ exports.listAvailableTimeBlocks = async (req, res) => {
 };
 
 exports.generateTimeBlocks = async (req, res) => {
-  const newTimeBlocks = await generateTimeBlocksService(req.validated.body);
+  const newTimeBlocks = await generateTimeBlocksService(
+    req.validated.body,
+    req.user.id,
+    req.ip,
+  );
   res.status(201).json(newTimeBlocks);
 };
 
 exports.createTimeBlock = async (req, res) => {
-  const newTimeBlock = await createTimeBlockService(req.validated.body);
+  const newTimeBlock = await createTimeBlockService(
+    req.validated.body,
+    req.user.id,
+    req.ip,
+  );
   res.status(201).json(newTimeBlock);
 };
 
@@ -40,11 +48,13 @@ exports.updateTimeBlock = async (req, res) => {
   const updatedTimeBlock = await updateTimeBlockService(
     req.validated.params.id,
     req.validated.body,
+    req.user.id,
+    req.ip,
   );
   res.status(200).json(updatedTimeBlock);
 };
 
 exports.deleteTimeBlock = async (req, res) => {
-  await deleteTimeBlockService(req.validated.params.id);
+  await deleteTimeBlockService(req.validated.params.id, req.user.id, req.ip);
   res.status(204).send();
 };

@@ -20,20 +20,23 @@ const {
   assertFound,
   contains,
 } = require("../helpers/commonHelpers");
+const { withAudit } = require("../utils/whithAudit");
 
-exports.createPatientService = async (data) => {
+exports.createPatientService = async (data, currentUserId, ip) => {
   const { preferredName, insuranceNumber } = data;
   const { userData, tempPassword } = await prepareNewUserService(prisma, data);
 
-  console.log(userData.firstName);
+  const actor = { id: currentUserId, ip };
 
-  const newPatient = await prisma.patient.create({
-    data: {
-      insuranceNumber,
-      preferredName,
-      user: { create: { ...userData, role: PATIENT } },
-    },
-    select: PATIENT_DETAILS_SELECT,
+  const newPatient = await withAudit(actor, async (tx) => {
+    return await tx.patient.create({
+      data: {
+        insuranceNumber,
+        preferredName,
+        user: { create: { ...userData, role: PATIENT } },
+      },
+      select: PATIENT_DETAILS_SELECT,
+    });
   });
 
   // Simula enviar correo: credenciales al nuevo usuario
@@ -129,26 +132,31 @@ exports.listPatientsService = async (query) => {
   return patients.map(flattenUser);
 };
 
-exports.updatePatientService = async (id, data) => {
+exports.updatePatientService = async (id, data, currentUserId, ip) => {
   const { preferredName, insuranceNumber, ...account } = data;
 
-  const updatedPatient = await prisma.patient.update({
-    where: { id, user: { deletedAt: null } },
-    data: {
-      insuranceNumber,
-      preferredName,
-      ...(Object.keys(account).length > 0 && { user: { update: account } }),
-    },
-    select: PATIENT_DETAILS_SELECT,
+  const actor = { id: currentUserId, ip };
+
+  const updatedPatient = await withAudit(actor, async (tx) => {
+    return await tx.patient.update({
+      where: { id, user: { deletedAt: null } },
+      data: {
+        insuranceNumber,
+        preferredName,
+        ...(Object.keys(account).length > 0 && { user: { update: account } }),
+      },
+      select: PATIENT_DETAILS_SELECT,
+    });
   });
 
   return flattenUser(updatedPatient);
 };
 
-exports.deletePatientService = async (id, currentUserId) => {
+exports.deletePatientService = async (id, currentUserId, ip) => {
   const now = new Date();
+  const actor = { id: currentUserId, ip };
 
-  await prisma.$transaction(async (tx) => {
+  await withAudit(actor, async (tx) => {
     const { count } = await tx.user.updateMany({
       where: { id, deletedAt: null, role: PATIENT },
       data: { isActive: false, deletedAt: now },

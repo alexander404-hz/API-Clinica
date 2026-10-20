@@ -11,6 +11,7 @@ const allowFields = require("../middlewares/allowFields");
 const { idParamValidator } = require("../validators/validatorUtils");
 const { USER_EDITABLE_FIELDS } = require("../constants/user");
 const { listLimiter } = require("../middlewares/rateLimiters");
+const { auditRead } = require("../utils/readAudit");
 
 const {
   listUsersValidator,
@@ -23,7 +24,6 @@ const {
   listUsers,
   getUser,
   updateUser,
-  deleteUser,
 } = require("../controllers/userController");
 
 router.get("/me", getMyProfile);
@@ -40,6 +40,7 @@ router.get(
   listLimiter,
   authorize(ADMIN),
   validate(listUsersValidator, "query"),
+  auditRead("User"),
   listUsers,
 );
 
@@ -47,6 +48,7 @@ router.get(
   "/:id",
   authorize(ADMIN),
   validate(idParamValidator, "params"),
+  auditRead("User"),
   getUser,
 );
 
@@ -56,13 +58,6 @@ router.patch(
   validate(idParamValidator, "params"),
   validate(updateUserValidator, "body"),
   updateUser,
-);
-
-router.delete(
-  "/:id",
-  validate(idParamValidator, "params"),
-  authorize(ADMIN),
-  deleteUser,
 );
 
 module.exports = router;

@@ -3,7 +3,7 @@ const { CANCELLED } = AppointmentStatus;
 
 const { REPLACE_FILTER } = require("../constants/timeblock");
 const { NONE, OVERLAP, ALL } = REPLACE_FILTER;
-
+const { withAudit } = require("../utils/whithAudit");
 const { assertFound, getClinicDayRange } = require("../helpers/commonHelpers");
 
 const {
@@ -17,13 +17,17 @@ const {
   assertDayWithinBookingWindow,
 } = require("../helpers/timeBlockHelpers");
 
-exports.createTimeBlockService = async (data) => {
+exports.createTimeBlockService = async (data, currentUserId, ip) => {
   const { startTime, endTime } = data;
 
   await assertNoOverlap(prisma, startTime, endTime);
 
-  const newTimeBlock = await prisma.timeBlock.create({
-    data: { startTime, endTime },
+  const actor = { id: currentUserId, ip };
+
+  const newTimeBlock = await withAudit(actor, async (tx) => {
+    return await tx.timeBlock.create({
+      data: { startTime, endTime },
+    });
   });
 
   return serializeTimeBlock(newTimeBlock);
@@ -47,7 +51,7 @@ exports.listTimeBlocksService = async () => {
   return timeBlocks.map(serializeTimeBlock);
 };
 
-exports.updateTimeBlockService = async (id, data) => {
+exports.updateTimeBlockService = async (id, data, currentUserId, ip) => {
   const current = await prisma.timeBlock.findUnique({ where: { id } });
   assertFound(current, "TimeBlock");
 
@@ -56,17 +60,25 @@ exports.updateTimeBlockService = async (id, data) => {
 
   await assertNoOverlap(prisma, startTime, endTime, id);
 
-  const updated = await prisma.timeBlock.update({
-    where: { id },
-    data: { startTime, endTime },
+  const actor = { id: currentUserId, ip };
+
+  const updated = await withAudit(actor, async (tx) => {
+    return await tx.timeBlock.update({
+      where: { id },
+      data: { startTime, endTime },
+    });
   });
 
   return serializeTimeBlock(updated);
 };
 
-exports.deleteTimeBlockService = async (id) => {
-  await prisma.timeBlock.delete({
-    where: { id },
+exports.deleteTimeBlockService = async (id, currentUserId, ip) => {
+  const actor = { id: currentUserId, ip };
+
+  await withAudit(actor, async (tx) => {
+    await tx.timeBlock.delete({
+      where: { id },
+    });
   });
 };
 
@@ -102,12 +114,14 @@ exports.listAvailableTimeBlocksService = async (date, currentUser) => {
   return availableTimeBlocks;
 };
 
-exports.generateTimeBlocksService = async (data) => {
+exports.generateTimeBlocksService = async (data, currentUserId, ip) => {
   const { startTime, endTime, duration, replace = NONE } = data;
 
   const generatedTimeBlocks = generateTimeBlocks(startTime, endTime, duration);
 
-  const newTimeBlocks = await prisma.$transaction(async (tx) => {
+  const actor = { id: currentUserId, ip };
+
+  const newTimeBlocks = await withAudit(actor, async (tx) => {
     if (replace === ALL) {
       await tx.timeBlock.deleteMany();
     } else if (replace === OVERLAP) {

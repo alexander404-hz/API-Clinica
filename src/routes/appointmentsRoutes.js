@@ -8,6 +8,7 @@ const authorize = require("../middlewares/authorize");
 const validate = require("../middlewares/validate");
 const { idParamValidator } = require("../validators/validatorUtils");
 const { listLimiter } = require("../middlewares/rateLimiters");
+const { auditRead } = require("../utils/readAudit");
 
 const {
   createAppointmentValidator,
@@ -33,6 +34,7 @@ router.get(
   "/:id",
   authorize(PATIENT, ADMIN),
   validate(idParamValidator, "params"),
+  auditRead("Appointment"),
   getAppointment,
 );
 
@@ -41,6 +43,7 @@ router.get(
   listLimiter,
   authorize(PATIENT, ADMIN),
   validate(listAppointmentsValidator, "query"),
+  auditRead("Appointment"),
   listAppointments,
 );
 

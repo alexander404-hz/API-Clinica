@@ -10,6 +10,7 @@ const allowFields = require("../middlewares/allowFields");
 
 const { PATIENT_EDITABLE_FIELDS } = require("../constants/patient");
 const { idParamValidator } = require("../validators/validatorUtils");
+const { auditRead } = require("../utils/readAudit");
 
 const {
   patientCreateLimiter,
@@ -55,6 +56,7 @@ router.get(
   listLimiter,
   authorize(ADMIN),
   validate(listPatientsValidator, "query"),
+  auditRead("Patient"),
   listPatients,
 );
 
@@ -62,6 +64,7 @@ router.get(
   "/:id",
   authorize(ADMIN),
   validate(idParamValidator, "params"),
+  auditRead("Patient"),
   getPatient,
 );
 
