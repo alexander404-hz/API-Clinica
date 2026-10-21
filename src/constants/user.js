@@ -1,7 +1,8 @@
 const { Role } = require("../prisma");
 const { ADMIN, PATIENT } = Role;
+const RoleValid = { ADMIN, PATIENT };
 
-exports.VALID_ROLES = Object.values(Role);
+exports.VALID_ROLES = Object.values(RoleValid);
 
 exports.DELETED_FILTER = Object.freeze({
   ONLY: "ONLY",

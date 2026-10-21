@@ -88,7 +88,7 @@ const DEV_PATIENTS = [
   {
     firstName: 'María',
     lastName: 'Hernández',
-    username: 'maria.hernandez',
+    username: 'MH26001',
     email: 'maria.hernandez@example.com',
     preferredName: 'Mary',
     insuranceNumber: 'INS-0001',
@@ -96,7 +96,7 @@ const DEV_PATIENTS = [
   {
     firstName: 'Carlos',
     lastName: 'Ramírez',
-    username: 'carlos.ramirez',
+    username: 'CR26001',
     email: 'carlos.ramirez@example.com',
     preferredName: null,
     insuranceNumber: 'INS-0002',
@@ -104,7 +104,7 @@ const DEV_PATIENTS = [
   {
     firstName: 'Ana',
     lastName: 'López',
-    username: 'ana.lopez',
+    username: 'AL26001',
     email: 'ana.lopez@example.com',
     preferredName: 'Anita',
     insuranceNumber: 'INS-0003',
@@ -112,7 +112,7 @@ const DEV_PATIENTS = [
   {
     firstName: 'José',
     lastName: 'Martínez',
-    username: 'jose.martinez',
+    username: 'JM26001',
     email: 'jose.martinez@example.com',
     preferredName: null,
     insuranceNumber: 'INS-0004',

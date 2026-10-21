@@ -3,6 +3,7 @@ const { PATIENT } = Role;
 const { SCHEDULED, CANCELLED } = AppointmentStatus;
 
 const { prepareNewUserService } = require("./userService");
+const { withAudit } = require("../utils/whithAudit");
 
 const {
   PATIENT_DETAILS_SELECT,
@@ -12,7 +13,7 @@ const {
 const {
   flattenUser,
   deletedAtFilter,
-  assertUpdated,
+  assertUserUpdated,
 } = require("../helpers/userHelpers");
 
 const {
@@ -20,7 +21,6 @@ const {
   assertFound,
   contains,
 } = require("../helpers/commonHelpers");
-const { withAudit } = require("../utils/whithAudit");
 
 exports.createPatientService = async (data, currentUserId, ip) => {
   const { preferredName, insuranceNumber } = data;
@@ -162,7 +162,7 @@ exports.deletePatientService = async (id, currentUserId, ip) => {
       data: { isActive: false, deletedAt: now },
     });
 
-    assertUpdated(count);
+    assertUserUpdated(count, "Patient");
 
     await tx.appointment.updateMany({
       where: { patientId: id, status: SCHEDULED, startsAt: { gte: now } },

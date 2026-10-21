@@ -70,6 +70,6 @@ exports.deletedAtFilter = (deleted) => {
   return null;
 };
 
-exports.assertUpdated = (count) => {
-  if (count === 0) throw new AppError("Patient not found", 404, NOT_FOUND);
+exports.assertUserUpdated = (count, rol) => {
+  if (count === 0) throw new AppError(`${rol} not found`, 404, NOT_FOUND);
 };
