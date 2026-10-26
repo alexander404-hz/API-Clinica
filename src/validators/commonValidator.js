@@ -1,3 +1,6 @@
+const { MAX_SEARCH_WORDS } = require("../constants/config");
+const { MAX_PAGINATE_LIMIT } = require("../constants/config");
+
 const {
   DATE_PATTERN,
   ISO_DATE_PATTERN,
@@ -89,6 +92,25 @@ exports.validateIntegerParam = (
   return int;
 };
 
+exports.validateSearch = (value, label = "Search") => {
+  const result = exports.validateString(value, label, false);
+  if (result.error || result.value === undefined) return result;
+
+  if (result.value.includes(",")) {
+    return {
+      error: `${label} cannot contain commas. Separate words with spaces.`,
+    };
+  }
+
+  const words = result.value.split(/\s+/);
+
+  if (words.length > MAX_SEARCH_WORDS) {
+    return { error: `${label} accepts at most ${MAX_SEARCH_WORDS} words.` };
+  }
+
+  return { value: words };
+};
+
 exports.validateBoolean = (value, label = "Boolean", required = false) => {
   const result = exports.validateString(value, label, required);
   if (result.error || result.value === undefined) return result;
@@ -106,13 +128,62 @@ exports.validateList = (value, label, list, required = false) => {
   const result = exports.validateString(value, label, required);
   if (result.error || result.value === undefined) return result;
 
-  const item = result.value.toUpperCase();
+  const match = list.find(
+    (option) => option.toUpperCase() === result.value.toUpperCase(),
+  );
 
-  if (!list.includes(item)) {
+  if (!match) {
     return { error: `${label} must be one of: ${list.join(", ")}.` };
   }
 
-  return { value: item };
+  return { value: match };
+};
+
+exports.validateMultiList = (value, label, list, required = false) => {
+  if (Array.isArray(value)) {
+    return {
+      error: `${label} must be sent once, with values separated by commas.`,
+    };
+  }
+
+  const maxLength = list.join(", ").length * 2;
+
+  const result = exports.validateString(value, label, required, maxLength);
+  if (result.error || result.value === undefined) return result;
+
+  const requested = result.value
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item !== "");
+
+  if (requested.length === 0) {
+    return required
+      ? { error: `${label} cannot be empty.` }
+      : { value: undefined };
+  }
+
+  const selected = [];
+  const invalid = [];
+
+  for (const item of requested) {
+    const match = list.find(
+      (option) => option.toUpperCase() === item.toUpperCase(),
+    );
+
+    if (!match) {
+      invalid.push(item);
+    } else if (!selected.includes(match)) {
+      selected.push(match); // sin duplicados, con el valor original de la lista
+    }
+  }
+
+  if (invalid.length > 0) {
+    return {
+      error: `${label} has invalid values (${invalid.join(", ")}). Allowed: ${list.join(", ")}.`,
+    };
+  }
+
+  return { value: selected };
 };
 
 function validatePatternedDate(value, label, pattern, example, required) {
@@ -204,3 +275,10 @@ exports.validateIsoDateRange = buildDateRangeValidator(
 exports.validateIsoDateTimeRange = buildDateRangeValidator(
   exports.validateIsoDateTime,
 );
+
+exports.validateLimit = (value, label = "Limit", max = MAX_PAGINATE_LIMIT) => {
+  const result = exports.validateIntegerParam(value, label, false, max);
+  if (result.error || result.value === undefined) return result;
+
+  return result;
+};

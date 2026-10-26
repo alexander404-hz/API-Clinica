@@ -84,7 +84,7 @@ exports.serializeAppointment = (appointment) => {
 exports.ownerFilter = (currentUser) =>
   currentUser.role === PATIENT ? { patientId: currentUser.id } : {};
 
-exports.selectFor = (currentUser) =>
+exports.appointmentSelectFor = (currentUser) =>
   currentUser.role === PATIENT
     ? APPOINTMENT_BASE_SELECT
     : APPOINTMENT_DETAILS_SELECT;

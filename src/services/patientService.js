@@ -2,24 +2,22 @@ const { prisma, Role, AppointmentStatus } = require("../prisma");
 const { PATIENT } = Role;
 const { SCHEDULED, CANCELLED } = AppointmentStatus;
 
+const auditChanges = require("../utils/auditChanges");
 const { prepareNewUserService } = require("./userService");
-const { withAudit } = require("../utils/whithAudit");
-
-const {
-  PATIENT_DETAILS_SELECT,
-  PATIENT_FULL_SELECT,
-} = require("../constants/patient");
+const { paginate } = require("../utils/paginate");
 
 const {
   flattenUser,
   deletedAtFilter,
   assertUserUpdated,
+  patientSelectFor,
 } = require("../helpers/userHelpers");
 
 const {
   buildRangeFilter,
   assertFound,
   contains,
+  buildSearchConditions,
 } = require("../helpers/commonHelpers");
 
 exports.createPatientService = async (data, currentUserId, ip) => {
@@ -28,7 +26,7 @@ exports.createPatientService = async (data, currentUserId, ip) => {
 
   const actor = { id: currentUserId, ip };
 
-  const newPatient = await withAudit(actor, async (tx) => {
+  const newPatient = await auditChanges(actor, async (tx) => {
     return await tx.patient.create({
       data: {
         insuranceNumber,
@@ -50,7 +48,7 @@ exports.createPatientService = async (data, currentUserId, ip) => {
 exports.getPatientService = async (id) => {
   const patient = await prisma.patient.findUnique({
     where: { id, user: { deletedAt: null } },
-    select: PATIENT_DETAILS_SELECT,
+    select: patientSelectFor(),
   });
 
   assertFound(patient, "Patient");
@@ -59,58 +57,38 @@ exports.getPatientService = async (id) => {
 };
 
 exports.listPatientsService = async (query) => {
-  const {
-    search,
-    firstName,
-    lastName,
-    username,
-    email,
-    role,
-    isActive,
-    createdFrom,
-    createdTo,
-    updatedFrom,
-    updatedTo,
-    insuranceNumber,
-    preferredName,
-    hasPreferredName,
-    deleted,
-  } = query;
+  const { search, firstName, lastName, username, email, role } = query;
+  const { isActive, createdFrom, createdTo, updatedFrom, updatedTo } = query;
+  const { insuranceNumber, preferredName, hasPreferredName, deleted } = query;
+  const { limit, cursor } = query;
 
-  const createdAt = buildRangeFilter(createdFrom, createdTo);
-  const updatedAt = buildRangeFilter(updatedFrom, updatedTo);
-
-  const userFilter = {
+  const userFilters = {
     deletedAt: deletedAtFilter(deleted),
-    ...(firstName && { firstName: contains(firstName) }),
-    ...(lastName && { lastName: contains(lastName) }),
-    ...(username && { username: contains(username) }),
-    ...(email && { email: contains(email) }),
-    ...(role && { role }),
-    ...(isActive !== undefined && { isActive }),
-    ...(createdAt && { createdAt }),
-    ...(updatedAt && { updatedAt }),
+    firstName: contains(firstName),
+    lastName: contains(lastName),
+    username: contains(username),
+    email: contains(email),
+    role: { in: role },
+    isActive,
+    createdAt: buildRangeFilter(createdFrom, createdTo),
+    updatedAt: buildRangeFilter(updatedFrom, updatedTo),
   };
 
-  const conditions = [];
-  const words = search ? search.split(/\s+/).slice(0, 5) : [];
+  const patientFilters = {
+    insuranceNumber: contains(insuranceNumber),
+    preferredName: contains(preferredName),
+  };
 
-  for (const word of words) {
-    conditions.push({
-      OR: [
-        { user: { firstName: contains(word) } },
-        { user: { lastName: contains(word) } },
-        { user: { username: contains(word) } },
-        { user: { email: contains(word) } },
-        { insuranceNumber: contains(word) },
-        { preferredName: contains(word) },
-      ],
-    });
-  }
+  const searchFields = [
+    "user.firstName",
+    "user.lastName",
+    "user.username",
+    "user.email",
+    "insuranceNumber",
+    "preferredName",
+  ];
 
-  if (preferredName) {
-    conditions.push({ preferredName: contains(preferredName) });
-  }
+  const conditions = buildSearchConditions(search, searchFields);
 
   if (hasPreferredName !== undefined) {
     conditions.push({
@@ -118,34 +96,36 @@ exports.listPatientsService = async (query) => {
     });
   }
 
-  const patients = await prisma.patient.findMany({
+  const patients = await paginate(prisma.patient, {
     where: {
-      user: userFilter,
-      ...(insuranceNumber && { insuranceNumber: contains(insuranceNumber) }),
-      ...(conditions.length > 0 && { AND: conditions }),
+      user: userFilters,
+      ...patientFilters,
+      AND: conditions,
     },
-    select: deleted ? PATIENT_FULL_SELECT : PATIENT_DETAILS_SELECT,
+    select: patientSelectFor(deleted),
     orderBy: { id: "asc" },
-    take: 100,
+    limit,
+    cursor,
+    flatten: flattenUser,
   });
 
-  return patients.map(flattenUser);
+  return patients;
 };
 
 exports.updatePatientService = async (id, data, currentUserId, ip) => {
-  const { preferredName, insuranceNumber, ...account } = data;
+  const { preferredName, insuranceNumber, ...user } = data;
 
   const actor = { id: currentUserId, ip };
 
-  const updatedPatient = await withAudit(actor, async (tx) => {
+  const updatedPatient = await auditChanges(actor, async (tx) => {
     return await tx.patient.update({
       where: { id, user: { deletedAt: null } },
       data: {
         insuranceNumber,
         preferredName,
-        ...(Object.keys(account).length > 0 && { user: { update: account } }),
+        user: { update: user },
       },
-      select: PATIENT_DETAILS_SELECT,
+      select: patientSelectFor(),
     });
   });
 
@@ -156,7 +136,7 @@ exports.deletePatientService = async (id, currentUserId, ip) => {
   const now = new Date();
   const actor = { id: currentUserId, ip };
 
-  await withAudit(actor, async (tx) => {
+  await auditChanges(actor, async (tx) => {
     const { count } = await tx.user.updateMany({
       where: { id, deletedAt: null, role: PATIENT },
       data: { isActive: false, deletedAt: now },

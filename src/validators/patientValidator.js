@@ -2,7 +2,13 @@ const AppError = require("../utils/AppError");
 
 const { VALIDATION_ERROR } = require("../constants/errorCodes");
 const { fieldChecker } = require("./validatorUtils");
-const { validateString, validateBoolean } = require("./commonValidator");
+const {
+  validateString,
+  validateBoolean,
+  validateSearch,
+  validateLimit,
+  validateIntegerParam,
+} = require("./commonValidator");
 
 const {
   PREFERRED_NAME_PATTERN,
@@ -67,13 +73,21 @@ exports.createPatientValidator = (body) => {
 };
 
 exports.listPatientsValidator = (query) => {
-  const { search, insuranceNumber, preferredName, hasPreferredName } = query;
+  const {
+    search,
+    insuranceNumber,
+    preferredName,
+    hasPreferredName,
+    limit,
+    cursor,
+  } = query;
 
   const errors = [];
   const cleaned = {};
   const check = fieldChecker(errors, cleaned);
 
-  check("search", validateString(search, "Search"));
+  check("search", validateSearch(search));
+
   checkUserFieldsToFilter(query, check);
   check("insuranceNumber", validateString(insuranceNumber, "Insurance number"));
   check("preferredName", validateString(preferredName, "Preferred name"));
@@ -81,6 +95,9 @@ exports.listPatientsValidator = (query) => {
     "hasPreferredName",
     validateBoolean(hasPreferredName, "Has preferred name"),
   );
+
+  check("limit", validateLimit(limit));
+  check("cursor", validateIntegerParam(cursor, "Cursor"));
 
   if (errors.length > 0) {
     throw new AppError("Validation failed.", 400, VALIDATION_ERROR, errors);

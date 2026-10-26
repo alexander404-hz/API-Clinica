@@ -4,6 +4,12 @@ CREATE TYPE "Role" AS ENUM ('ADMIN', 'PATIENT', 'SYSTEM');
 -- CreateEnum
 CREATE TYPE "AppointmentStatus" AS ENUM ('SCHEDULED', 'CANCELLED', 'COMPLETED', 'NO_SHOW');
 
+-- CreateEnum
+CREATE TYPE "ReadAction" AS ENUM ('READ', 'LIST', 'SEARCH');
+
+-- CreateEnum
+CREATE TYPE "ChangeAction" AS ENUM ('CREATE', 'UPDATE', 'DELETE', 'SOFT_DELETE', 'RESTORE');
+
 -- CreateTable
 CREATE TABLE "User" (
     "id" SERIAL NOT NULL,
@@ -57,30 +63,31 @@ CREATE TABLE "Appointment" (
 );
 
 -- CreateTable
-CREATE TABLE "AuditLog" (
+CREATE TABLE "ReadsLog" (
     "id" SERIAL NOT NULL,
-    "actorId" TEXT,
-    "action" TEXT NOT NULL,
+    "actorId" INTEGER NOT NULL,
+    "action" "ReadAction" NOT NULL,
     "entity" TEXT NOT NULL,
-    "entityId" TEXT,
-    "changes" JSONB,
+    "entityId" INTEGER,
+    "query" JSONB,
     "ip" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "AuditLog_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "ReadsLog_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "AccessLog" (
+CREATE TABLE "ChangesLog" (
     "id" SERIAL NOT NULL,
-    "actorId" TEXT NOT NULL,
+    "actorId" INTEGER,
+    "action" "ChangeAction" NOT NULL,
     "entity" TEXT NOT NULL,
-    "entityId" TEXT,
-    "query" JSONB,
+    "entityId" INTEGER,
+    "changes" JSONB,
     "ip" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "AccessLog_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "ChangesLog_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
@@ -93,22 +100,28 @@ CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 CREATE UNIQUE INDEX "Patient_insuranceNumber_key" ON "Patient"("insuranceNumber");
 
 -- CreateIndex
-CREATE INDEX "AuditLog_entity_entityId_idx" ON "AuditLog"("entity", "entityId");
+CREATE INDEX "ReadsLog_actorId_idx" ON "ReadsLog"("actorId");
 
 -- CreateIndex
-CREATE INDEX "AuditLog_actorId_idx" ON "AuditLog"("actorId");
+CREATE INDEX "ReadsLog_entity_entityId_idx" ON "ReadsLog"("entity", "entityId");
 
 -- CreateIndex
-CREATE INDEX "AuditLog_createdAt_idx" ON "AuditLog"("createdAt");
+CREATE INDEX "ReadsLog_createdAt_idx" ON "ReadsLog"("createdAt");
 
 -- CreateIndex
-CREATE INDEX "AccessLog_actorId_idx" ON "AccessLog"("actorId");
+CREATE INDEX "ReadsLog_action_idx" ON "ReadsLog"("action");
 
 -- CreateIndex
-CREATE INDEX "AccessLog_entity_entityId_idx" ON "AccessLog"("entity", "entityId");
+CREATE INDEX "ChangesLog_entity_entityId_idx" ON "ChangesLog"("entity", "entityId");
 
 -- CreateIndex
-CREATE INDEX "AccessLog_createdAt_idx" ON "AccessLog"("createdAt");
+CREATE INDEX "ChangesLog_actorId_idx" ON "ChangesLog"("actorId");
+
+-- CreateIndex
+CREATE INDEX "ChangesLog_createdAt_idx" ON "ChangesLog"("createdAt");
+
+-- CreateIndex
+CREATE INDEX "ChangesLog_action_idx" ON "ChangesLog"("action");
 
 -- AddForeignKey
 ALTER TABLE "Patient" ADD CONSTRAINT "Patient_id_fkey" FOREIGN KEY ("id") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -118,3 +131,9 @@ ALTER TABLE "Appointment" ADD CONSTRAINT "Appointment_patientId_fkey" FOREIGN KE
 
 -- AddForeignKey
 ALTER TABLE "Appointment" ADD CONSTRAINT "Appointment_statusChangedById_fkey" FOREIGN KEY ("statusChangedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ReadsLog" ADD CONSTRAINT "ReadsLog_actorId_fkey" FOREIGN KEY ("actorId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ChangesLog" ADD CONSTRAINT "ChangesLog_actorId_fkey" FOREIGN KEY ("actorId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;

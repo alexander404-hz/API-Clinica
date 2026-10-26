@@ -8,6 +8,12 @@ const {
   MS_PER_DAY,
 } = require("../constants/config");
 
+function nestFilter(path, filter) {
+  return path
+    .split(".")
+    .reduceRight((inner, key) => ({ [key]: inner }), filter);
+}
+
 exports.buildRangeFilter = (from, to) => {
   const range = {
     ...(from && { gte: from }),
@@ -24,6 +30,11 @@ exports.assertFound = (resource, label = "Resource") => {
 };
 
 exports.contains = (value) => ({ contains: value, mode: "insensitive" });
+
+exports.buildSearchConditions = (words = [], fields = []) =>
+  words.map((word) => ({
+    OR: fields.map((field) => nestFilter(field, exports.contains(word))),
+  }));
 
 /**
  * Dado un Date en medianoche UTC del día pedido (ej. 2026-10-14T00:00:00Z),

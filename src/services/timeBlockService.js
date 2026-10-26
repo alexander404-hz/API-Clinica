@@ -1,9 +1,9 @@
 const { prisma, AppointmentStatus } = require("../prisma");
 const { CANCELLED } = AppointmentStatus;
 
+const auditChanges = require("../utils/auditChanges");
 const { REPLACE_FILTER } = require("../constants/timeblock");
 const { NONE, OVERLAP, ALL } = REPLACE_FILTER;
-const { withAudit } = require("../utils/whithAudit");
 const { assertFound, getClinicDayRange } = require("../helpers/commonHelpers");
 
 const {
@@ -24,7 +24,7 @@ exports.createTimeBlockService = async (data, currentUserId, ip) => {
 
   const actor = { id: currentUserId, ip };
 
-  const newTimeBlock = await withAudit(actor, async (tx) => {
+  const newTimeBlock = await auditChanges(actor, async (tx) => {
     return await tx.timeBlock.create({
       data: { startTime, endTime },
     });
@@ -62,7 +62,7 @@ exports.updateTimeBlockService = async (id, data, currentUserId, ip) => {
 
   const actor = { id: currentUserId, ip };
 
-  const updated = await withAudit(actor, async (tx) => {
+  const updated = await auditChanges(actor, async (tx) => {
     return await tx.timeBlock.update({
       where: { id },
       data: { startTime, endTime },
@@ -75,7 +75,7 @@ exports.updateTimeBlockService = async (id, data, currentUserId, ip) => {
 exports.deleteTimeBlockService = async (id, currentUserId, ip) => {
   const actor = { id: currentUserId, ip };
 
-  await withAudit(actor, async (tx) => {
+  await auditChanges(actor, async (tx) => {
     await tx.timeBlock.delete({
       where: { id },
     });
@@ -121,7 +121,7 @@ exports.generateTimeBlocksService = async (data, currentUserId, ip) => {
 
   const actor = { id: currentUserId, ip };
 
-  const newTimeBlocks = await withAudit(actor, async (tx) => {
+  const newTimeBlocks = await auditChanges(actor, async (tx) => {
     if (replace === ALL) {
       await tx.timeBlock.deleteMany();
     } else if (replace === OVERLAP) {

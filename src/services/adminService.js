@@ -1,8 +1,8 @@
 const { prisma, Role } = require("../prisma");
 const { ADMIN } = Role;
 
+const auditChanges = require("../utils/auditChanges");
 const { USER_DETAILS_SELECT } = require("../constants/user");
-const { withAudit } = require("../utils/whithAudit");
 const { prepareNewUserService } = require("./userService");
 const { assertNotSelf, assertUserUpdated } = require("../helpers/userHelpers");
 
@@ -11,7 +11,7 @@ exports.createAdminService = async (data, currentUserId, ip) => {
 
   const actor = { id: currentUserId, ip };
 
-  const newAdmin = await withAudit(actor, async (tx) => {
+  const newAdmin = await auditChanges(actor, async (tx) => {
     return await tx.user.create({
       data: {
         ...userData,
@@ -31,7 +31,7 @@ exports.deleteAdminService = async (id, currentUserId, ip) => {
 
   const actor = { id: currentUserId, ip };
 
-  await withAudit(actor, async (tx) => {
+  await auditChanges(actor, async (tx) => {
     const { count } = await tx.user.updateMany({
       where: { id, deletedAt: null, role: ADMIN },
       data: { deletedAt: new Date(), isActive: false },

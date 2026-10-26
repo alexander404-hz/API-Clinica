@@ -10,6 +10,10 @@ const {
   validateString,
   validateBoolean,
   validateList,
+  validateMultiList,
+  validateSearch,
+  validateLimit,
+  validateIntegerParam,
 } = require("./commonValidator");
 
 const validateName = (value, label = "Name", required = false) => {
@@ -49,18 +53,8 @@ exports.checkUserFieldsToCreate = (body, check) => {
 };
 
 exports.checkUserFieldsToFilter = (query, check) => {
-  const {
-    firstName,
-    lastName,
-    email,
-    username,
-    isActive,
-    createdFrom,
-    createdTo,
-    updatedFrom,
-    updatedTo,
-    deleted,
-  } = query;
+  const { firstName, lastName, email, username, isActive } = query;
+  const { createdFrom, createdTo, updatedFrom, updatedTo, deleted } = query;
 
   check("firstName", validateName(firstName, "First name"));
   check("lastName", validateName(lastName, "Last name"));
@@ -92,15 +86,19 @@ exports.checkUserFieldsToFilter = (query, check) => {
 };
 
 exports.listUsersValidator = (query) => {
-  const { search, role } = query;
+  const { search, role, limit, cursor } = query;
 
   const errors = [];
   const cleaned = {};
   const check = fieldChecker(errors, cleaned);
 
-  check("search", validateString(search, "Search"));
+  check("search", validateSearch(search));
+
   exports.checkUserFieldsToFilter(query, check);
-  check("role", validateList(role, "Role", VALID_ROLES));
+  check("role", validateMultiList(role, "Role", VALID_ROLES));
+
+  check("limit", validateLimit(limit));
+  check("cursor", validateIntegerParam(cursor, "Cursor"));
 
   if (errors.length > 0) {
     throw new AppError("Validation failed.", 400, VALIDATION_ERROR, errors);

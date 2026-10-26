@@ -7,11 +7,11 @@ const { ADMIN } = Role;
 const authorize = require("../middlewares/authorize");
 const validate = require("../middlewares/validate");
 const allowFields = require("../middlewares/allowFields");
+const auditReads = require("../utils/auditReads");
 
 const { idParamValidator } = require("../validators/validatorUtils");
 const { USER_EDITABLE_FIELDS } = require("../constants/user");
 const { listLimiter } = require("../middlewares/rateLimiters");
-const { auditRead } = require("../utils/readAudit");
 
 const {
   listUsersValidator,
@@ -40,7 +40,7 @@ router.get(
   listLimiter,
   authorize(ADMIN),
   validate(listUsersValidator, "query"),
-  auditRead("User"),
+  auditReads("User"),
   listUsers,
 );
 
@@ -48,7 +48,7 @@ router.get(
   "/:id",
   authorize(ADMIN),
   validate(idParamValidator, "params"),
-  auditRead("User"),
+  auditReads("User"),
   getUser,
 );
 

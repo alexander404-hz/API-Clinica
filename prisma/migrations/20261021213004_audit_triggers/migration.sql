@@ -1,8 +1,9 @@
--- This is an empty migration.-- This is an empty migration.-- Función genérica de auditoría
+-- Función genérica de auditoría
 CREATE OR REPLACE FUNCTION audit_row_change() RETURNS trigger AS $$
 DECLARE
-  actor    text  := NULLIF(current_setting('app.user_id', true), '');
+  actor    integer := NULLIF(current_setting('app.user_id', true), '')::integer;
   actor_ip text  := NULLIF(current_setting('app.ip', true), '');
+  act      text;
   old_row  jsonb;
   new_row  jsonb;
   diff     jsonb;
@@ -31,12 +32,20 @@ BEGIN
     diff := old_row;
   END IF;
 
-  INSERT INTO "AuditLog" ("actorId", "action", "entity", "entityId", "changes", "ip")
+  act := CASE
+    WHEN TG_OP = 'INSERT' THEN 'CREATE'
+    WHEN TG_OP = 'DELETE' THEN 'DELETE'
+    WHEN old_row ->> 'deletedAt' IS NULL AND new_row ->> 'deletedAt' IS NOT NULL THEN 'SOFT_DELETE'
+    WHEN old_row ->> 'deletedAt' IS NOT NULL AND new_row ->> 'deletedAt' IS NULL THEN 'RESTORE'
+    ELSE 'UPDATE'
+  END;
+
+  INSERT INTO "ChangesLog" ("actorId", "action", "entity", "entityId", "changes", "ip")
   VALUES (
     actor,
-    TG_OP,
+    act::"ChangeAction",
     TG_TABLE_NAME,
-    COALESCE(new_row, old_row) ->> 'id',
+    (COALESCE(new_row, old_row) ->> 'id')::integer,
     diff,
     actor_ip
   );
@@ -58,7 +67,10 @@ CREATE TRIGGER audit_appointment
 AFTER INSERT OR UPDATE OR DELETE ON "Appointment"
 FOR EACH ROW EXECUTE FUNCTION audit_row_change();
 
--- Repite el CREATE TRIGGER para "Admin", "TimeBlock", etc.
+CREATE TRIGGER audit_time_block
+AFTER INSERT OR UPDATE OR DELETE ON "TimeBlock"
+FOR EACH ROW EXECUTE FUNCTION audit_row_change();
+
 
 -- El log es append-only: nadie puede editar ni borrar filas
 CREATE OR REPLACE FUNCTION log_immutable() RETURNS trigger AS $$
@@ -67,10 +79,10 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER audit_log_no_modify
-BEFORE UPDATE OR DELETE ON "AuditLog"
+CREATE TRIGGER change_log_no_modify
+BEFORE UPDATE OR DELETE ON "ChangesLog"
 FOR EACH ROW EXECUTE FUNCTION log_immutable();
 
 CREATE TRIGGER access_log_no_modify
-BEFORE UPDATE OR DELETE ON "AccessLog"
+BEFORE UPDATE OR DELETE ON "ReadsLog"
 FOR EACH ROW EXECUTE FUNCTION log_immutable();

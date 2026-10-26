@@ -2,16 +2,17 @@ const { prisma, Role, AppointmentStatus } = require("../prisma");
 const { PATIENT } = Role;
 const { CANCELLED, SCHEDULED, COMPLETED, NO_SHOW } = AppointmentStatus;
 
+const auditChanges = require("../utils/auditChanges");
 const { APPOINTMENT_BASE_SELECT } = require("../constants/appointment");
 const { getPatientService } = require("./patientService");
-const { withAudit } = require("../utils/whithAudit");
+const { paginate } = require("../utils/paginate");
 
 const {
   assertFound,
   buildRangeFilter,
-  contains,
   getClinicDayRange,
   getClinicDateOf,
+  buildSearchConditions,
 } = require("../helpers/commonHelpers");
 
 const {
@@ -20,10 +21,10 @@ const {
   serializeAppointment,
   ownerFilter,
   assertCancellationWindowOpen,
-  selectFor,
   assertValidTransition,
   assertAppointmentDayStarted,
   assertCanCorrectNoShow,
+  appointmentSelectFor,
 } = require("../helpers/appointmentHelpers");
 
 exports.createAppointmentService = async (data, currentUser, ip) => {
@@ -36,7 +37,7 @@ exports.createAppointmentService = async (data, currentUser, ip) => {
 
   const actor = { id: currentUser.id, ip };
 
-  const newAppointment = await withAudit(actor, async (tx) => {
+  const newAppointment = await auditChanges(actor, async (tx) => {
     return await tx.appointment.create({
       data: { startsAt, endsAt, patientId },
       select: APPOINTMENT_BASE_SELECT,
@@ -52,7 +53,7 @@ exports.getAppointmentService = async (id, currentUser) => {
       id,
       ...ownerFilter(currentUser),
     },
-    select: selectFor(currentUser),
+    select: appointmentSelectFor(currentUser),
   });
 
   assertFound(appointment, "Appointment");
@@ -61,67 +62,48 @@ exports.getAppointmentService = async (id, currentUser) => {
 };
 
 exports.listAppointmentsService = async (query, currentUser) => {
-  const {
-    search,
-    startsFrom,
-    startsTo,
-    endsFrom,
-    endsTo,
-    status,
-    statusChangedFrom,
-    statusChangedTo,
-    statusChangedById,
-    patientId,
-    createdFrom,
-    createdTo,
-  } = query;
-
-  const startsAt = buildRangeFilter(startsFrom, startsTo);
-  const endsAt = buildRangeFilter(endsFrom, endsTo);
-  const statusChangedAt = buildRangeFilter(statusChangedFrom, statusChangedTo);
-  const createdAt = buildRangeFilter(createdFrom, createdTo);
+  const { search, startsFrom, startsTo, endsFrom, endsTo, status } = query;
+  const { statusChangedFrom, statusChangedTo, statusChangedById } = query;
+  const { patientId, createdFrom, createdTo, limit, cursor } = query;
 
   const isPatient = currentUser.role === PATIENT;
 
-  const conditions = [];
-  const words = !isPatient && search ? search.split(/\s+/).slice(0, 5) : [];
+  const appointmentFilters = {
+    startsAt: buildRangeFilter(startsFrom, startsTo),
+    endsAt: buildRangeFilter(endsFrom, endsTo),
+    patientId: isPatient ? currentUser.id : patientId,
+    status: { in: status },
+    statusChangedAt: buildRangeFilter(statusChangedFrom, statusChangedTo),
+    statusChangedById: isPatient ? undefined : statusChangedById,
+    createdAt: buildRangeFilter(createdFrom, createdTo),
+  };
 
-  for (const word of words) {
-    conditions.push({
-      patient: {
-        OR: [
-          { user: { firstName: contains(word) } },
-          { user: { lastName: contains(word) } },
-          { user: { username: contains(word) } },
-          { user: { email: contains(word) } },
-          { insuranceNumber: contains(word) },
-          { preferredName: contains(word) },
-        ],
-      },
-    });
-  }
+  const searchFields = [
+    "patient.user.firstName",
+    "patient.user.lastName",
+    "patient.user.username",
+    "patient.user.email",
+    "patient.insuranceNumber",
+    "patient.preferredName",
+  ];
 
-  const ownerFilter = isPatient
-    ? { patientId: currentUser.id }
-    : patientId && { patientId };
+  const conditions = isPatient
+    ? undefined
+    : buildSearchConditions(search, searchFields);
 
-  const appointments = await prisma.appointment.findMany({
+  const appointments = await paginate(prisma.appointment, {
     where: {
-      ...ownerFilter,
-      ...(startsAt && { startsAt }),
-      ...(endsAt && { endsAt }),
-      ...(status && { status }),
-      ...(statusChangedAt && { statusChangedAt }),
-      ...(!isPatient && statusChangedById && { statusChangedById }),
-      ...(createdAt && { createdAt }),
-      ...(conditions.length > 0 && { AND: conditions }),
+      ...appointmentFilters,
+      AND: conditions,
     },
-    select: selectFor(currentUser),
+    select: appointmentSelectFor(currentUser),
     orderBy: { startsAt: "desc" },
-    take: 100,
+    limit,
+    cursor,
+    flatten: serializeAppointment,
   });
 
-  return appointments.map(serializeAppointment);
+  return appointments;
 };
 
 const markAppointment = async (id, currentUser, status, ip) => {
@@ -149,11 +131,11 @@ const markAppointment = async (id, currentUser, status, ip) => {
 
   const actor = { id: currentUser.id, ip };
 
-  const updated = await withAudit(actor, async (tx) => {
+  const updated = await auditChanges(actor, async (tx) => {
     return await tx.appointment.update({
       where: { id, status: from, ...ownerFilter(currentUser) },
       data: { status, statusChangedAt: now, statusChangedById: currentUser.id },
-      select: selectFor(currentUser),
+      select: appointmentSelectFor(currentUser),
     });
   });
 
@@ -181,7 +163,7 @@ exports.closeExpiredAppointmentsService = async (now = new Date()) => {
 
   const actor = { id: system.id, ip: "127.0.0.1" };
 
-  const { count } = await withAudit(actor, async (tx) => {
+  const { count } = await auditChanges(actor, async (tx) => {
     return await tx.appointment.updateMany({
       where: { status: SCHEDULED, startsAt: { lt: dayStart } },
       data: {

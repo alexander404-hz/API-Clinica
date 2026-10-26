@@ -7,10 +7,10 @@ const { ADMIN, PATIENT } = Role;
 const authorize = require("../middlewares/authorize");
 const validate = require("../middlewares/validate");
 const allowFields = require("../middlewares/allowFields");
+const auditReads = require("../utils/auditReads");
 
 const { PATIENT_EDITABLE_FIELDS } = require("../constants/patient");
 const { idParamValidator } = require("../validators/validatorUtils");
-const { auditRead } = require("../utils/readAudit");
 
 const {
   patientCreateLimiter,
@@ -56,7 +56,7 @@ router.get(
   listLimiter,
   authorize(ADMIN),
   validate(listPatientsValidator, "query"),
-  auditRead("Patient"),
+  auditReads("Patient"),
   listPatients,
 );
 
@@ -64,7 +64,7 @@ router.get(
   "/:id",
   authorize(ADMIN),
   validate(idParamValidator, "params"),
-  auditRead("Patient"),
+  auditReads("Patient"),
   getPatient,
 );
 

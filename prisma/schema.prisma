@@ -38,6 +38,8 @@ model User {
 
   patientProfile            Patient?
   statusChangedAppointments Appointment[] @relation("AppointmentStatusChangedBy")
+  auditLogs                 ChangesLog[]  @relation("AuditActor")
+  accessLogs                ReadsLog[]    @relation("AccessActor")
 }
 
 model Patient {
@@ -78,31 +80,54 @@ model Appointment {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
 }
 
-model AuditLog {
-  id        Int      @id @default(autoincrement())
-  actorId   String?
-  action    String // INSERT, UPDATE, DELETE
-  entity    String // nombre de la tabla
-  entityId  String?
-  changes   Json?
-  ip        String?
-  createdAt DateTime @default(now())
-
-  @@index([entity, entityId])
-  @@index([actorId])
-  @@index([createdAt])
+enum ReadAction {
+  READ
+  LIST
+  SEARCH
 }
 
-model AccessLog {
-  id        Int      @id @default(autoincrement())
-  actorId   String
+enum ChangeAction {
+  CREATE
+  UPDATE
+  DELETE
+  SOFT_DELETE
+  RESTORE
+}
+
+model ReadsLog {
+  id Int @id @default(autoincrement())
+
+  actorId Int
+  actor   User @relation("AccessActor", fields: [actorId], references: [id])
+
+  action    ReadAction
   entity    String
-  entityId  String?
+  entityId  Int?
   query     Json?
   ip        String?
-  createdAt DateTime @default(now())
+  createdAt DateTime   @default(now()) @db.Timestamptz(3)
 
   @@index([actorId])
   @@index([entity, entityId])
   @@index([createdAt])
+  @@index([action])
+}
+
+model ChangesLog {
+  id Int @id @default(autoincrement())
+
+  actorId Int?
+  actor   User? @relation("AuditActor", fields: [actorId], references: [id])
+
+  action    ChangeAction
+  entity    String // nombre de la tabla
+  entityId  Int?
+  changes   Json?
+  ip        String?
+  createdAt DateTime     @default(now()) @db.Timestamptz(3)
+
+  @@index([entity, entityId])
+  @@index([actorId])
+  @@index([createdAt])
+  @@index([action])
 }

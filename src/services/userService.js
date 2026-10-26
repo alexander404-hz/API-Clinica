@@ -1,12 +1,13 @@
 const { prisma } = require("../prisma");
 
-const { USER_DETAILS_SELECT, USER_FULL_SELECT } = require("../constants/user");
-const { withAudit } = require("../utils/whithAudit");
+const auditChanges = require("../utils/auditChanges");
+const { paginate } = require("../utils/paginate");
 
 const {
   buildRangeFilter,
   assertFound,
   contains,
+  buildSearchConditions,
 } = require("../helpers/commonHelpers");
 
 const {
@@ -15,6 +16,7 @@ const {
   generateHashedPassword,
   assertNotSelf,
   deletedAtFilter,
+  userSelectFor,
 } = require("../helpers/userHelpers");
 
 exports.prepareNewUserService = async (tx, data) => {
@@ -44,7 +46,7 @@ exports.prepareNewUserService = async (tx, data) => {
 exports.getUserService = async (id) => {
   const user = await prisma.user.findUnique({
     where: { id, deletedAt: null, NOT: { role: "SYSTEM" } },
-    select: USER_DETAILS_SELECT,
+    select: userSelectFor(),
   });
 
   assertFound(user, "User");
@@ -53,56 +55,35 @@ exports.getUserService = async (id) => {
 };
 
 exports.listUsersService = async (query) => {
-  const {
-    search,
-    firstName,
-    lastName,
-    username,
-    email,
-    role,
-    isActive,
-    createdFrom,
-    createdTo,
-    updatedFrom,
-    updatedTo,
-    deleted,
-  } = query;
+  const { search, firstName, lastName, username, email, role } = query;
+  const { isActive, createdFrom, createdTo, updatedFrom, updatedTo } = query;
+  const { deleted, limit, cursor } = query;
 
-  const createdAt = buildRangeFilter(createdFrom, createdTo);
-  const updatedAt = buildRangeFilter(updatedFrom, updatedTo);
-
-  const userFilter = {
+  const userFilters = {
     deletedAt: deletedAtFilter(deleted),
-    ...(firstName && { firstName: contains(firstName) }),
-    ...(lastName && { lastName: contains(lastName) }),
-    ...(username && { username: contains(username) }),
-    ...(email && { email: contains(email) }),
-    ...(role && { role }),
-    ...(isActive !== undefined && { isActive }),
-    ...(createdAt && { createdAt }),
-    ...(updatedAt && { updatedAt }),
+    firstName: contains(firstName),
+    lastName: contains(lastName),
+    username: contains(username),
+    email: contains(email),
+    role: { in: role },
+    isActive,
+    createdAt: buildRangeFilter(createdFrom, createdTo),
+    updatedAt: buildRangeFilter(updatedFrom, updatedTo),
   };
 
-  const words = search ? search.split(/\s+/).slice(0, 5) : [];
+  const searchFields = ["firstName", "lastName", "username", "email"];
+  const conditions = buildSearchConditions(search, searchFields);
 
-  const users = await prisma.user.findMany({
+  const users = await paginate(prisma.user, {
     where: {
-      ...(words.length > 0 && {
-        AND: words.map((word) => ({
-          OR: [
-            { firstName: contains(word) },
-            { lastName: contains(word) },
-            { username: contains(word) },
-            { email: contains(word) },
-          ],
-        })),
-      }),
-      ...userFilter,
+      ...userFilters,
+      AND: conditions,
       NOT: { role: "SYSTEM" },
     },
-    select: deleted ? USER_FULL_SELECT : USER_DETAILS_SELECT,
+    select: userSelectFor(deleted),
     orderBy: { id: "asc" },
-    take: 100,
+    limit,
+    cursor,
   });
 
   return users;
@@ -117,11 +98,11 @@ exports.updateUserService = async (id, data, currentUserId, ip) => {
 
   const actor = { id: currentUserId, ip };
 
-  const updatedUser = await withAudit(actor, async (tx) => {
+  const updatedUser = await auditChanges(actor, async (tx) => {
     return await tx.user.update({
       where: { id, deletedAt: null, NOT: { role: "SYSTEM" } },
       data: { firstName, lastName, email, isActive },
-      select: USER_DETAILS_SELECT,
+      select: userSelectFor(),
     });
   });
 

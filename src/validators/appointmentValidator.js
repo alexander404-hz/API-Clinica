@@ -7,10 +7,11 @@ const { fieldChecker } = require("./validatorUtils");
 const {
   validateInteger,
   validateIsoDateRange,
-  validateString,
-  validateList,
   validateIntegerParam,
   validateIsoDateTimeRange,
+  validateMultiList,
+  validateSearch,
+  validateLimit,
 } = require("./commonValidator");
 
 exports.createAppointmentValidator = (body) => {
@@ -41,26 +42,15 @@ exports.createAppointmentValidator = (body) => {
 };
 
 exports.listAppointmentsValidator = (query) => {
-  const {
-    search,
-    startsFrom,
-    startsTo,
-    endsFrom,
-    endsTo,
-    status,
-    statusChangedFrom,
-    statusChangedTo,
-    statusChangedById,
-    patientId,
-    createdFrom,
-    createdTo,
-  } = query;
+  const { search, startsFrom, startsTo, endsFrom, endsTo, status } = query;
+  const { statusChangedFrom, statusChangedTo, statusChangedById } = query;
+  const { patientId, createdFrom, createdTo, limit, cursor } = query;
 
   const errors = [];
   const cleaned = {};
   const check = fieldChecker(errors, cleaned);
 
-  check("search", validateString(search, "Search"));
+  check("search", validateSearch(search));
 
   const starts = validateIsoDateRange(
     startsFrom,
@@ -77,7 +67,10 @@ exports.listAppointmentsValidator = (query) => {
   check("endsFrom", ends.from);
   check("endsTo", ends.to);
 
-  check("status", validateList(status, "Status", VALID_APPOINTMENT_STATUS));
+  check(
+    "status",
+    validateMultiList(status, "Status", VALID_APPOINTMENT_STATUS),
+  );
 
   const statusChanged = validateIsoDateRange(
     statusChangedFrom,
@@ -104,6 +97,9 @@ exports.listAppointmentsValidator = (query) => {
 
   check("createdFrom", created.from);
   check("createdTo", created.to);
+
+  check("limit", validateLimit(limit));
+  check("cursor", validateIntegerParam(cursor, "Cursor"));
 
   if (errors.length > 0) {
     throw new AppError("Validation failed.", 400, VALIDATION_ERROR, errors);

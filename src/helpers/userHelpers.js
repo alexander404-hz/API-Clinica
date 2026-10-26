@@ -1,11 +1,17 @@
 const AppError = require("../utils/AppError");
 
+const crypto = require("crypto");
+const bcrypt = require("bcryptjs");
 const { FORBIDDEN, NOT_FOUND } = require("../constants/errorCodes");
 const { SALT_ROUNDS } = require("../constants/security");
 const { DELETED_FILTER } = require("../constants/user");
 const { ONLY, INCLUDE } = DELETED_FILTER;
-const crypto = require("crypto");
-const bcrypt = require("bcryptjs");
+const { USER_DETAILS_SELECT, USER_FULL_SELECT } = require("../constants/user");
+
+const {
+  PATIENT_DETAILS_SELECT,
+  PATIENT_FULL_SELECT,
+} = require("../constants/patient");
 
 const toAsciiUpperInitial = (text = "") => {
   const clean = String(text)
@@ -73,3 +79,9 @@ exports.deletedAtFilter = (deleted) => {
 exports.assertUserUpdated = (count, rol) => {
   if (count === 0) throw new AppError(`${rol} not found`, 404, NOT_FOUND);
 };
+
+exports.userSelectFor = (deleted = false) =>
+  deleted ? USER_FULL_SELECT : USER_DETAILS_SELECT;
+
+exports.patientSelectFor = (deleted = false) =>
+  deleted ? PATIENT_FULL_SELECT : PATIENT_DETAILS_SELECT;
