@@ -16,7 +16,7 @@ app.use(LoggerMiddleware);
 app.use("/api", routes);
 
 app.get("/", (req, res) => {
-  res.send("Hello World");
+  res.send("Services enabled   =D");
 });
 
 app.use((req, res, next) => {
