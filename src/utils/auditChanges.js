@@ -5,7 +5,7 @@ const { prisma } = require("../prisma");
 module.exports = (actor, fn) =>
   prisma.$transaction(async (tx) => {
     await tx.$queryRaw`
-      SELECT set_config('app.user_id', ${String(actor.id)}, true),
+      SELECT set_config('app.user_id', ${String(actor.id ?? "")}, true),
              set_config('app.ip', ${actor.ip ?? ""}, true)
     `;
     return fn(tx);
