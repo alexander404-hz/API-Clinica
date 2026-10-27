@@ -11,7 +11,7 @@ API REST para la gestión de citas médicas: registro de pacientes, bloques hora
 | Área | Herramienta |
 | --- | --- |
 | Runtime / framework | Node.js (>= 20), Express 5 |
-| Base de datos | PostgreSQL alojado en Prisma Postgres |
+| Base de datos | PostgreSQL gestionado con Prisma Postgres (administrado desde Prisma Console) |
 | ORM y migraciones | Prisma 6 |
 | Autenticación | JSON Web Tokens (`jsonwebtoken`), contraseñas con `bcryptjs` |
 | Protección | `express-rate-limit` |
@@ -161,7 +161,7 @@ Todas las rutas cuelgan de `/api`. Excepto `/auth/register` y `/auth/login`, req
 
 ## Ejecutar en local
 
-Requisitos: Node.js 20 o superior y una base PostgreSQL.
+Requisitos: Node.js 20 o superior y PostgreSQL 17 o superior (probado con la 17.2 en producción y la 18.6 en local).
 
 ```bash
 git clone https://github.com/alexander404-hz/API-Clinica.git
@@ -181,7 +181,8 @@ npm run dev
 | `NODE_ENV` | `development` en local, `production` en el despliegue |
 | `PORT` | Puerto del servidor (por defecto `3005`) |
 | `DOMAIN` | Dominio mostrado en el log de arranque |
-| `DATABASE_URL` | Cadena de conexión de PostgreSQL |
+| `DATABASE_URL` | Cadena de conexión que usa la API en tiempo de ejecución. En producción, la URL *pooled* (`pooled.db.prisma.io`) |
+| `DIRECT_DATABASE_URL` | Conexión directa (`db.prisma.io`), usada por Prisma solo para las migraciones. En local, el mismo valor que `DATABASE_URL` |
 | `JWT_SECRET` | Secreto para firmar los tokens |
 | `SEED_ADMIN_USERNAME`, `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_ADMIN_FIRST_NAME`, `SEED_ADMIN_LAST_NAME` | Solo producción: datos del administrador inicial. En local se usan valores por defecto |
 
@@ -226,6 +227,7 @@ Decisiones de diseño:
 
 - **Migrar antes de desplegar**, para que el código nuevo nunca corra contra un esquema viejo.
 - **Un grupo de `concurrency` compartido**, para que una migración y la carga inicial no se ejecuten a la vez.
+- **Dos conexiones a la base**: la API usa la URL con *pooling* para soportar mejor los reinicios y arranques en frío de Render, y las migraciones usan la conexión directa (`directUrl` en `schema.prisma`).
 - **Secrets en un environment `production`** de GitHub, restringido a la rama principal.
 - **Carga inicial separada del despliegue**: se ejecuta una sola vez y de forma manual, así los datos iniciales no se vuelven a tocar en cada push.
 
