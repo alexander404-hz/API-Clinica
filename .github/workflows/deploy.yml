@@ -35,6 +35,7 @@ jobs:
         run: npx prisma migrate deploy
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
 
       # Solo se llega aquí si la migración funcionó
       - name: Trigger Render deploy
