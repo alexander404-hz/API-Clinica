@@ -7,7 +7,7 @@ function resolveReadAction(entityId, hasFilters) {
 
 module.exports = (entity) => (req, res, next) => {
   const entityId = req.validated.params?.id;
-  const { limit, cursor, ...filters } = req.validated?.query;
+  const { limit, cursor, ...filters } = req.validated?.query ?? {};
   const hasFilters = Object.keys(filters) > 0;
 
   res.on("finish", () => {
