@@ -16,6 +16,8 @@ app.use(LoggerMiddleware);
 app.use("/api", routes);
 
 app.get("/", (req, res) => {
+  console.log("XFF:", req.headers["x-forwarded-for"], "| req.ip:", req.ip);
+
   res.send("Services enabled   =D");
 });
 
