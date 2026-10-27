@@ -1,0 +1,44 @@
+name: Initialize data
+
+# Se lanza a mano desde la pestaña Actions (botón "Run workflow").
+# Úsalo una sola vez, DESPUÉS de que el workflow "Deploy" haya migrado la base.
+on:
+  workflow_dispatch:
+
+# Comparte grupo con "Deploy" para no ejecutarse al mismo tiempo que una migración
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  init-data:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Seed reference data
+        run: node prisma/seed.js
+        env:
+          NODE_ENV: production
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Bootstrap system users
+        run: node prisma/bootstrap.js
+        env:
+          NODE_ENV: production
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SEED_ADMIN_USERNAME: ${{ secrets.SEED_ADMIN_USERNAME }}
+          SEED_ADMIN_EMAIL: ${{ secrets.SEED_ADMIN_EMAIL }}
+          SEED_ADMIN_PASSWORD: ${{ secrets.SEED_ADMIN_PASSWORD }}
