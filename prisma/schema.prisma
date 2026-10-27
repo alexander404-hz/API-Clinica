@@ -120,7 +120,7 @@ model ChangesLog {
   actor   User? @relation("AuditActor", fields: [actorId], references: [id])
 
   action    ChangeAction
-  entity    String // nombre de la tabla
+  entity    String
   entityId  Int?
   changes   Json?
   ip        String?

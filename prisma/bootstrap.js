@@ -9,6 +9,8 @@
  *      No puede iniciar sesión (inactiva y con contraseña aleatoria descartada).
  *   2. Primer administrador, con mustChangePassword = true.
  *
+ * Si ya existe un ADMIN, no se crean ni se exigen credenciales para otro.
+ *
  * Requiere que exista el valor SYSTEM en el enum Role (migración aplicada
  * y cliente regenerado con `prisma generate`).
  *
@@ -72,6 +74,17 @@ async function bootstrapSystemUser() {
 }
 
 async function bootstrapAdmin() {
+  // Si ya existe un administrador, no se piden credenciales ni se crea otro.
+  // Así el script puede correr en cada despliegue sin SEED_ADMIN_* configuradas.
+  const existingAdmin = await prisma.user.findFirst({
+    where: { role: 'ADMIN' },
+    select: { id: true },
+  });
+  if (existingAdmin) {
+    console.log('✔ Ya existe un administrador, se omite.');
+    return;
+  }
+
   const username = requireEnv('SEED_ADMIN_USERNAME', 'ADMIN');
   const email = requireEnv('SEED_ADMIN_EMAIL', 'admin@example.com').toLowerCase();
   const password = requireEnv('SEED_ADMIN_PASSWORD', '1234');

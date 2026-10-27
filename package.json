@@ -1,8 +1,8 @@
 {
-  "name": "3.curso-de-backend-con-expressjs",
+  "name": "API-Clinica",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "API para gestión de citas médicas",
+  "main": "src/server.js",
   "scripts": {
     "dev": "node --env-file .env --watch src/server.js",
     "seed": "node --env-file .env prisma/seed.js",
@@ -14,8 +14,10 @@
     "release": "prisma migrate deploy && node prisma/seed.js && node prisma/bootstrap.js",
     "postinstall": "prisma generate"
   },
-  "keywords": [],
-  "author": "",
+  "engines": {
+    "node": ">=20"
+  },
+  "author": "Alexander Hz",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
@@ -24,9 +26,7 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.7.1",
     "jsonwebtoken": "^9.0.3",
-    "pg": "^8.23.0"
-  },
-  "devDependencies": {
+    "pg": "^8.23.0",
     "prisma": "^6.19.3"
   }
 }
