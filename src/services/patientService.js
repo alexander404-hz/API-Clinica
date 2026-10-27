@@ -3,6 +3,7 @@ const { PATIENT } = Role;
 const { SCHEDULED, CANCELLED } = AppointmentStatus;
 
 const auditChanges = require("../utils/auditChanges");
+const { PATIENT_DETAILS_SELECT } = require("../constants/patient");
 const { prepareNewUserService } = require("./userService");
 const { paginate } = require("../utils/paginate");
 
