@@ -23,29 +23,29 @@
  *   SEED_ADMIN_LAST_NAME    (opcional, default "Sistema")
  */
 
-const crypto = require('crypto');
-const bcrypt = require('bcryptjs');
-const { PrismaClient } = require('../generated/prisma');
-
-const prisma = new PrismaClient();
+const crypto = require("crypto");
+const bcrypt = require("bcryptjs");
+const { prisma } = require("../src/prisma");
 
 // Solo NODE_ENV=development habilita valores por defecto. Cualquier otro valor
 // (production, test, o variable ausente) exige credenciales explícitas.
-const IS_DEV = process.env.NODE_ENV === 'development';
+const IS_DEV = process.env.NODE_ENV === "development";
 const BCRYPT_ROUNDS = 12;
 
 // Username fijo: los jobs buscan este usuario por username, nunca por id.
-const SYSTEM_USERNAME = 'system';
+const SYSTEM_USERNAME = "system";
 
 function requireEnv(name, devFallback) {
   const value = process.env[name];
-  if (value && value.trim() !== '') return value.trim();
+  if (value && value.trim() !== "") return value.trim();
   if (IS_DEV && devFallback !== undefined) return devFallback;
   throw new Error(`Falta la variable de entorno obligatoria: ${name}`);
 }
 
 async function bootstrapSystemUser() {
-  const existing = await prisma.user.findUnique({ where: { username: SYSTEM_USERNAME } });
+  const existing = await prisma.user.findUnique({
+    where: { username: SYSTEM_USERNAME },
+  });
   if (existing) {
     console.log(`✔ Usuario "${SYSTEM_USERNAME}" ya existe, se omite.`);
     return;
@@ -53,17 +53,17 @@ async function bootstrapSystemUser() {
 
   // Contraseña aleatoria que nadie conoce: la cuenta no es utilizable para login.
   const unusablePassword = await bcrypt.hash(
-    crypto.randomBytes(64).toString('hex'),
+    crypto.randomBytes(64).toString("hex"),
     BCRYPT_ROUNDS,
   );
 
   await prisma.user.create({
     data: {
-      firstName: 'Sistema',
-      lastName: 'Interno',
-      role: 'SYSTEM',
+      firstName: "Sistema",
+      lastName: "Interno",
+      role: "SYSTEM",
       username: SYSTEM_USERNAME,
-      email: 'system@internal.invalid', // TLD reservado: nunca será un correo real
+      email: "system@internal.invalid", // TLD reservado: nunca será un correo real
       password: unusablePassword,
       isActive: false,
       mustChangePassword: false,
@@ -77,22 +77,27 @@ async function bootstrapAdmin() {
   // Si ya existe un administrador, no se piden credenciales ni se crea otro.
   // Así el script puede correr en cada despliegue sin SEED_ADMIN_* configuradas.
   const existingAdmin = await prisma.user.findFirst({
-    where: { role: 'ADMIN' },
+    where: { role: "ADMIN" },
     select: { id: true },
   });
   if (existingAdmin) {
-    console.log('✔ Ya existe un administrador, se omite.');
+    console.log("✔ Ya existe un administrador, se omite.");
     return;
   }
 
-  const username = requireEnv('SEED_ADMIN_USERNAME', 'ADMIN');
-  const email = requireEnv('SEED_ADMIN_EMAIL', 'admin@example.com').toLowerCase();
-  const password = requireEnv('SEED_ADMIN_PASSWORD', '1234');
-  const firstName = process.env.SEED_ADMIN_FIRST_NAME || 'Super';
-  const lastName = process.env.SEED_ADMIN_LAST_NAME || 'Admin';
+  const username = requireEnv("SEED_ADMIN_USERNAME", "ADMIN");
+  const email = requireEnv(
+    "SEED_ADMIN_EMAIL",
+    "admin@example.com",
+  ).toLowerCase();
+  const password = requireEnv("SEED_ADMIN_PASSWORD", "1234");
+  const firstName = process.env.SEED_ADMIN_FIRST_NAME || "Super";
+  const lastName = process.env.SEED_ADMIN_LAST_NAME || "Admin";
 
   if (!IS_DEV && password.length < 6) {
-    throw new Error('SEED_ADMIN_PASSWORD debe tener al menos 6 caracteres fuera de desarrollo.');
+    throw new Error(
+      "SEED_ADMIN_PASSWORD debe tener al menos 6 caracteres fuera de desarrollo.",
+    );
   }
 
   const existing = await prisma.user.findUnique({ where: { username } });
@@ -106,7 +111,7 @@ async function bootstrapAdmin() {
     data: {
       firstName,
       lastName,
-      role: 'ADMIN',
+      role: "ADMIN",
       username,
       email,
       password: await bcrypt.hash(password, BCRYPT_ROUNDS),
@@ -115,7 +120,9 @@ async function bootstrapAdmin() {
     },
   });
 
-  console.log(`✔ Admin "${username}" creado (deberá cambiar su contraseña al iniciar sesión).`);
+  console.log(
+    `✔ Admin "${username}" creado (deberá cambiar su contraseña al iniciar sesión).`,
+  );
 }
 
 async function main() {
@@ -125,7 +132,7 @@ async function main() {
 
 main()
   .catch((err) => {
-    console.error('❌ Error en bootstrap:', err);
+    console.error("❌ Error en bootstrap:", err);
     process.exitCode = 1;
   })
   .finally(async () => {

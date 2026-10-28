@@ -38,10 +38,30 @@ const messageForConstraint = (err, messages, fallback) => {
   return name ? messages[name] : fallback;
 };
 
+const getUniqueFields = (err) => {
+  const { target, driverAdapterError } = err.meta ?? {};
+  if (target?.length) return [].concat(target);
+
+  const cause = driverAdapterError?.cause;
+  const fields = cause?.constraint?.fields;
+  if (fields?.length) return fields.map((f) => String(f).replace(/"/g, ""));
+
+  // Solo llega el nombre de la restricción entre comillas, en el idioma del servidor:
+  //   «User_email_key»   "User_email_key"
+  const name =
+    cause?.constraint?.index ??
+    cause?.originalMessage?.match(/[«"“„]([^»"”“]+)[»"”“]/)?.[1];
+
+  // Prisma nombra los únicos como Tabla_campo_key
+  const match = name?.match(/^[^_]+_(.+)_key$/);
+  return match ? [match[1]] : [];
+};
+
 module.exports = (err) => {
   switch (getDbCode(err)) {
     case "P2002": {
-      const fields = [].concat(err.meta?.target ?? []);
+      fields = getUniqueFields(err);
+
       return new AppError(
         "A unique field is already in use.",
         409,
