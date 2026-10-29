@@ -1,0 +1,1062 @@
+{
+  "info": {
+    "_postman_id": "d6e84c4c-8492-4149-be0b-b260a33a685f",
+    "name": "Clinica API",
+    "description": "## Clinica API\n\nEsta colección cubre la API backend completa de un sistema de gestión clínica. Está organizada en siete módulos funcionales, cada uno orientado a un dominio específico de la plataforma:\n\n- **Auth** — Registro de usuarios, inicio de sesión y gestión de contraseñas. Todas las solicitudes autenticadas utilizan un Bearer token enviado a través de la variable `{{token}}`.\n- **User** — Consulta y actualización de la información de cuentas de usuario, tanto para el usuario actual como por parte de administradores.\n- **Patient** — Gestión completa del ciclo de vida del paciente: crear, consultar, actualizar y eliminar registros, incluyendo endpoints de autoservicio (`Get Me`, `Update Me`).\n- **Appointment** — Programación y gestión de citas, con soporte para crear, consultar, cancelar y marcar citas como completadas.\n- **TimeBlock** — Definición y gestión de ventanas de disponibilidad del proveedor. Incluye creación manual, generación automática, consulta de horarios disponibles y eliminación.\n- **Admin** — Operaciones administrativas para crear y eliminar cuentas de administrador.\n- **Audit** — Acceso de solo lectura a los registros de auditoría del sistema, cubriendo tanto lecturas de datos como historial de cambios.\n\n**Autenticación:** Bearer token (`{{token}}`), configurado a nivel de colección y heredado por todas las solicitudes.\n\n**Las URLs base** se gestionan mediante variables a nivel de colección (`auth_url`, `user_url`, `patient_url`, `appointment_url`, `timeblock_url`, `admin_url`, `audit_url`), resueltas contra el entorno activo (`{{base_url}}`).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "58038959",
+    "_collection_link": "https://go.postman.co/collection/58038959-d6e84c4c-8492-4149-be0b-b260a33a685f?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Create",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"firstName\": \"Abigail\",\r\n    \"lastName\": \"España\",\r\n    \"email\": \"espabi16@gmail.com\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}{{admin_url}}",
+              "host": [
+                "{{base_url}}{{admin_url}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{admin_url}}/8",
+              "host": [
+                "{{base_url}}{{admin_url}}"
+              ],
+              "path": [
+                "8"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Appointment",
+      "item": [
+        {
+          "name": "Create",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"startsAt\": \"2026-10-29T16:30:00-06:00\",\r\n    \"endsAt\": \"2026-10-29T17:00:00-06:00\",\r\n    \"patientId\": 7\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}{{appointment_url}}",
+              "host": [
+                "{{base_url}}{{appointment_url}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{appointment_url}}/1",
+              "host": [
+                "{{base_url}}{{appointment_url}}"
+              ],
+              "path": [
+                "1"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get All",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{appointment_url}}",
+              "host": [
+                "{{base_url}}{{appointment_url}}"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "ani",
+                  "disabled": true
+                },
+                {
+                  "key": "startsFrom",
+                  "value": "2026-10-19",
+                  "disabled": true
+                },
+                {
+                  "key": "startsTo",
+                  "value": "2026-10-21",
+                  "disabled": true
+                },
+                {
+                  "key": "endsFrom",
+                  "value": "2026-10-20T11:30:00-06:00",
+                  "disabled": true
+                },
+                {
+                  "key": "endsTo",
+                  "value": "2026-10-20T12:00:00-06:00",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "no_show, completed",
+                  "disabled": true
+                },
+                {
+                  "key": "statusChangedFrom",
+                  "value": "2026-10-14T07:18:59.100-06:00",
+                  "disabled": true
+                },
+                {
+                  "key": "statusChangedTo",
+                  "value": "2026-10-14T07:18:59.900-06:00",
+                  "disabled": true
+                },
+                {
+                  "key": "statusChangedById",
+                  "value": "2",
+                  "disabled": true
+                },
+                {
+                  "key": "patientId",
+                  "value": "3",
+                  "disabled": true
+                },
+                {
+                  "key": "createdFrom",
+                  "value": "2026-10-14T18:18:42Z",
+                  "disabled": true
+                },
+                {
+                  "key": "createdTo",
+                  "value": "2026-10-14T18:19:38Z",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "3",
+                  "disabled": true
+                },
+                {
+                  "key": "cursor",
+                  "value": "5",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{appointment_url}}/3/cancel",
+              "host": [
+                "{{base_url}}{{appointment_url}}"
+              ],
+              "path": [
+                "3",
+                "cancel"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Complete",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{appointment_url}}/1/complete",
+              "host": [
+                "{{base_url}}{{appointment_url}}"
+              ],
+              "path": [
+                "1",
+                "complete"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Audit",
+      "item": [
+        {
+          "name": "Reads Logs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{audit_url}}/reads-logs",
+              "host": [
+                "{{base_url}}{{audit_url}}"
+              ],
+              "path": [
+                "reads-logs"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "exam",
+                  "disabled": true
+                },
+                {
+                  "key": "actorId",
+                  "value": "3",
+                  "disabled": true
+                },
+                {
+                  "key": "action",
+                  "value": "read",
+                  "disabled": true
+                },
+                {
+                  "key": "actorRole",
+                  "value": "admin, patient",
+                  "disabled": true
+                },
+                {
+                  "key": "entity",
+                  "value": "user, patient",
+                  "disabled": true
+                },
+                {
+                  "key": "entityId",
+                  "value": "6",
+                  "disabled": true
+                },
+                {
+                  "key": "ip",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "3",
+                  "disabled": true
+                },
+                {
+                  "key": "cursor",
+                  "value": "205",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Changes Logs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{audit_url}}/changes-logs",
+              "host": [
+                "{{base_url}}{{audit_url}}"
+              ],
+              "path": [
+                "changes-logs"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "exam",
+                  "disabled": true
+                },
+                {
+                  "key": "actorId",
+                  "value": "3",
+                  "disabled": true
+                },
+                {
+                  "key": "action",
+                  "value": "read",
+                  "disabled": true
+                },
+                {
+                  "key": "actorRole",
+                  "value": "admin, patient",
+                  "disabled": true
+                },
+                {
+                  "key": "hasActor",
+                  "value": "false",
+                  "disabled": true
+                },
+                {
+                  "key": "entity",
+                  "value": "user, patient",
+                  "disabled": true
+                },
+                {
+                  "key": "entityId",
+                  "value": "6",
+                  "disabled": true
+                },
+                {
+                  "key": "ip",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "3",
+                  "disabled": true
+                },
+                {
+                  "key": "cursor",
+                  "value": "38",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"firstName\": \"Juan\",\r\n    \"lastName\": \"Perez\",\r\n    \"email\": \"juan.perez@gmail.com\",\r\n    \"password\": \"12345xD*\",\r\n    \"insuranceNumber\": \"ins-0220\",\r\n    \"preferredName\" : \"Juancito\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}{{auth_url}}/register",
+              "host": [
+                "{{base_url}}{{auth_url}}"
+              ],
+              "path": [
+                "register"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {\n    pm.response.to.have.status(200);\n});\n\npm.test(\"Response body contains a token field\", function () {\n    const jsonData = pm.response.json();\n    pm.expect(jsonData).to.have.property(\"token\");\n});\n\npm.test(\"Token is a non-empty string\", function () {\n    const jsonData = pm.response.json();\n    pm.expect(jsonData.token).to.be.a(\"string\").and.to.have.length.above(0);\n});\n\npm.test(\"Save token to environment variable\", function () {\n    const jsonData = pm.response.json();\n    pm.environment.set(\"token\", jsonData.token);\n    pm.expect(pm.environment.get(\"token\")).to.equal(jsonData.token);\n});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"identifier\": \"admin\",\r\n    \"password\": \"12345xD*\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}{{auth_url}}/login",
+              "host": [
+                "{{base_url}}{{auth_url}}"
+              ],
+              "path": [
+                "login"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Change Pass",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"currentPassword\" : \"\",\r\n    \"newPassword\": \"\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}{{auth_url}}/change-password",
+              "host": [
+                "{{base_url}}{{auth_url}}"
+              ],
+              "path": [
+                "change-password"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Patient",
+      "item": [
+        {
+          "name": "Create",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"firstName\": \"Juan\",\r\n    \"lastName\": \"Perez\",\r\n    \"email\": \"pepe@gmail.com\",\r\n    \"preferredName\":\"Juancito\",\r\n    \"insuranceNumber\":\"INS-2020\"\r\n}\r\n",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}{{patient_url}}",
+              "host": [
+                "{{base_url}}{{patient_url}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{patient_url}}/4",
+              "host": [
+                "{{base_url}}{{patient_url}}"
+              ],
+              "path": [
+                "4"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get All",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{patient_url}}",
+              "host": [
+                "{{base_url}}{{patient_url}}"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "ar dez",
+                  "disabled": true
+                },
+                {
+                  "key": "firstName",
+                  "value": "ar",
+                  "disabled": true
+                },
+                {
+                  "key": "lastName",
+                  "value": "dez",
+                  "disabled": true
+                },
+                {
+                  "key": "username",
+                  "value": "mh",
+                  "disabled": true
+                },
+                {
+                  "key": "email",
+                  "value": "dez",
+                  "disabled": true
+                },
+                {
+                  "key": "role",
+                  "value": "patient",
+                  "disabled": true
+                },
+                {
+                  "key": "insuranceNumber",
+                  "value": "20",
+                  "disabled": true
+                },
+                {
+                  "key": "preferredName",
+                  "value": "ka",
+                  "disabled": true
+                },
+                {
+                  "key": "hasPreferredName",
+                  "value": "false",
+                  "disabled": true
+                },
+                {
+                  "key": "isActive",
+                  "value": "false",
+                  "disabled": true
+                },
+                {
+                  "key": "createdFrom",
+                  "value": "2026-10-15",
+                  "disabled": true
+                },
+                {
+                  "key": "createdTo",
+                  "value": "2026-10-16",
+                  "disabled": true
+                },
+                {
+                  "key": "updatedFrom",
+                  "value": "2026-10-19T15:00:00-06:00",
+                  "disabled": true
+                },
+                {
+                  "key": "updatedTo",
+                  "value": "2026-10-20T20:09:00Z",
+                  "disabled": true
+                },
+                {
+                  "key": "deleted",
+                  "value": "include",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "2",
+                  "disabled": true
+                },
+                {
+                  "key": "cursor",
+                  "value": "2",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Me",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{patient_url}}/me",
+              "host": [
+                "{{base_url}}{{patient_url}}"
+              ],
+              "path": [
+                "me"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"firstName\": \"Fabiola\",\r\n    \"lastName\": \"Corena\",\r\n    \"email\": \"fabi@gmail.com\",\r\n    \"isActive\": \"true\",\r\n    \"insuranceNumber\": \"INS-1000\",\r\n    \"preferredName\": null\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}{{patient_url}}/10",
+              "host": [
+                "{{base_url}}{{patient_url}}"
+              ],
+              "path": [
+                "10"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Me",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"email\": \"fabi@gmail.com\",\r\n    \"preferredName\": null\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}{{patient_url}}/me",
+              "host": [
+                "{{base_url}}{{patient_url}}"
+              ],
+              "path": [
+                "me"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{patient_url}}/10",
+              "host": [
+                "{{base_url}}{{patient_url}}"
+              ],
+              "path": [
+                "10"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "TimeBlock",
+      "item": [
+        {
+          "name": "Create",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"startTime\": \"07:05\",\r\n    \"endTime\": \"07:30\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}{{timeblock_url}}",
+              "host": [
+                "{{base_url}}{{timeblock_url}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Generate",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"startTime\": \"07:30\",\r\n    \"endTime\": \"15:30\",\r\n    \"duration\":\"00:30\",\r\n    \"replace\" : \"all\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}{{timeblock_url}}/generate",
+              "host": [
+                "{{base_url}}{{timeblock_url}}"
+              ],
+              "path": [
+                "generate"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{timeblock_url}}/17",
+              "host": [
+                "{{base_url}}{{timeblock_url}}"
+              ],
+              "path": [
+                "17"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get All",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{timeblock_url}}",
+              "host": [
+                "{{base_url}}{{timeblock_url}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Available",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{timeblock_url}}/available?date=2026-10-27",
+              "host": [
+                "{{base_url}}{{timeblock_url}}"
+              ],
+              "path": [
+                "available"
+              ],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "2026-10-27"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"startTime\": \"07:00\",\r\n    \"endTime\" : \"07:25\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}{{timeblock_url}}/1",
+              "host": [
+                "{{base_url}}{{timeblock_url}}"
+              ],
+              "path": [
+                "1"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{timeblock_url}}/1",
+              "host": [
+                "{{base_url}}{{timeblock_url}}"
+              ],
+              "path": [
+                "1"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "User",
+      "item": [
+        {
+          "name": "Get",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{user_url}}/4",
+              "host": [
+                "{{base_url}}{{user_url}}"
+              ],
+              "path": [
+                "4"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get All",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{user_url}}",
+              "host": [
+                "{{base_url}}{{user_url}}"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "ar dez",
+                  "disabled": true
+                },
+                {
+                  "key": "firstName",
+                  "value": "ar",
+                  "disabled": true
+                },
+                {
+                  "key": "lastName",
+                  "value": "dez",
+                  "disabled": true
+                },
+                {
+                  "key": "username",
+                  "value": "mh",
+                  "disabled": true
+                },
+                {
+                  "key": "email",
+                  "value": "dez",
+                  "disabled": true
+                },
+                {
+                  "key": "role",
+                  "value": "patient",
+                  "disabled": true
+                },
+                {
+                  "key": "isActive",
+                  "value": "false",
+                  "disabled": true
+                },
+                {
+                  "key": "createdFrom",
+                  "value": "2026-10-15",
+                  "disabled": true
+                },
+                {
+                  "key": "createdTo",
+                  "value": "2026-10-16",
+                  "disabled": true
+                },
+                {
+                  "key": "updatedFrom",
+                  "value": "2026-10-19T15:00:00-06:00",
+                  "disabled": true
+                },
+                {
+                  "key": "updatedTo",
+                  "value": "2026-10-20T20:09:00Z",
+                  "disabled": true
+                },
+                {
+                  "key": "deleted",
+                  "value": "only",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "2",
+                  "disabled": true
+                },
+                {
+                  "key": "cursor",
+                  "value": "2",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Me",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{user_url}}/me",
+              "host": [
+                "{{base_url}}{{user_url}}"
+              ],
+              "path": [
+                "me"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"firstName\": \"Alex\",\r\n    \"lastName\": \"Sanchez\",\r\n    \"email\": \"alexander12@gmail.com\",\r\n    \"isActive\": \"true\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}{{user_url}}/4",
+              "host": [
+                "{{base_url}}{{user_url}}"
+              ],
+              "path": [
+                "4"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Me",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"firstName\": \"Super\",\r\n    \"lastName\": \"Admin\",\r\n    \"email\": \"admin@gmail.com\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}{{user_url}}/me",
+              "host": [
+                "{{base_url}}{{user_url}}"
+              ],
+              "path": [
+                "me"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "admin_url",
+      "value": "/admins"
+    },
+    {
+      "key": "appointment_url",
+      "value": "appointments"
+    },
+    {
+      "key": "audit_url",
+      "value": "/audit"
+    },
+    {
+      "key": "auth_url",
+      "value": "/auth"
+    },
+    {
+      "key": "patient_url",
+      "value": "/patients"
+    },
+    {
+      "key": "timeblock_url",
+      "value": "/timeblocks"
+    },
+    {
+      "key": "user_url",
+      "value": "/users"
+    }
+  ]
+}
