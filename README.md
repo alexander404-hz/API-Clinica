@@ -12,7 +12,7 @@ API REST para la gestión de citas médicas: registro de pacientes, bloques hora
 | --- | --- |
 | Runtime / framework | Node.js (>= 20), Express 5 |
 | Base de datos | PostgreSQL gestionado con Prisma Postgres (administrado desde Prisma Console) |
-| ORM y migraciones | Prisma 6 |
+| ORM y migraciones | Prisma 6 con el adaptador `@prisma/adapter-pg` (driver `pg`) |
 | Autenticación | JSON Web Tokens (`jsonwebtoken`), contraseñas con `bcryptjs` |
 | Protección | `express-rate-limit` |
 | CI/CD | GitHub Actions |
@@ -33,6 +33,59 @@ API REST para la gestión de citas médicas: registro de pacientes, bloques hora
 - **Borrado lógico** de usuarios (`deletedAt`).
 - **Paginación por cursor** en los listados.
 - **Rate limiting** por IP, por cuenta y por usuario en registro, login, cambio de contraseña, listados y creación de pacientes.
+
+## Seguridad
+
+### Autenticación y sesiones
+
+- **Contraseñas con hash**: bcrypt (`bcryptjs`) con coste 10. Nunca se guardan en texto plano.
+- **Login sin enumeración de usuarios**: una cuenta inexistente y una contraseña incorrecta devuelven el mismo error (401 `INVALID_CREDENTIALS`). Si la cuenta no existe, se compara contra un hash falso, para que ambos caminos hagan el mismo trabajo costoso y no se distingan por el tiempo de respuesta.
+- **Estado de la cuenta**: una cuenta deshabilitada (403) solo se revela a quien ya presentó la contraseña correcta.
+- **Registro sin enumeración**: el endpoint responde de inmediato con `202 Accepted` y el mismo mensaje, y procesa el registro en segundo plano. Por eso ni la respuesta ni su tiempo dependen de si el correo o el número de seguro ya existían; en ese caso se avisa al titular por correo (simulado).
+- **Tokens JWT** firmados con `JWT_SECRET` y con expiración de 1 hora. En cada petición protegida se consulta la base: el usuario debe existir, estar activo y no estar eliminado, así que desactivar una cuenta corta su acceso de inmediato.
+- **Invalidación al cambiar la contraseña**: los tokens emitidos antes del último cambio dejan de valer (se compara la fecha de emisión del token con `passwordChangedAt`), y el cambio devuelve un token nuevo.
+- **Cambio obligatorio de contraseña**: las cuentas creadas por un administrador tienen `mustChangePassword`. Mientras esté activo, todas las rutas protegidas responden 403 `MUST_CHANGE_PASSWORD`, y solo queda disponible el cambio de contraseña.
+
+### Protección contra abuso
+
+Limitación de peticiones con `express-rate-limit`. Las respuestas 429 pasan por el manejador de errores central y usan el mismo formato que el resto.
+
+| Limitador | Clave | Límite |
+| --- | --- | --- |
+| Registro por IP | IP | 5 por hora |
+| Registro por correo | Correo | 3 por hora |
+| Login por IP | IP | 20 fallos cada 15 min |
+| Login por cuenta | Cuenta | 10 fallos por hora |
+| Cambio de contraseña | Usuario | 5 fallos cada 5 min |
+| Token ausente o inválido | IP | 30 errores cada 15 min |
+| Tope general | Usuario | 450 cada 15 min |
+| Listados (contador compartido) | Usuario | 60 cada 15 min |
+| Creación de pacientes | Usuario | 40 por hora |
+
+- En el login por cuenta, los identificadores que no existen también tienen su contador, para que el bloqueo no delate qué cuentas existen.
+- En el login solo cuentan los intentos fallidos.
+- Al primer bloqueo de una cuenta se avisa a su dueño (correo simulado).
+
+### Control de acceso y validación
+
+- **Autorización por rol** en cada ruta (`authorize`).
+- **Lista blanca de campos** editables por rol en las actualizaciones de perfil (`allowFields`): un campo no permitido responde 403 y se indica cuál.
+- **Validación de entradas** (`body`, `query` y `params`) antes de los controladores, que solo usan los datos ya validados.
+
+### Errores, registros y secretos
+
+- **Errores controlados**: los errores de servidor (5xx) devuelven un mensaje genérico y nunca los detalles internos; la traza solo se incluye en modo `development`. Los errores de la base de datos se traducen a respuestas HTTP definidas.
+- **Registro de peticiones** sin cuerpos ni cabeceras, así que ni contraseñas ni tokens llegan a los logs.
+- **Auditoría** de cambios (triggers en la base) y de lecturas, con el usuario y la IP de cada acción.
+- **IP real del cliente** detrás del proxy de Render (`trust proxy`), para que la limitación de peticiones y la auditoría usen la dirección correcta.
+- **Secretos fuera del repositorio**: variables de entorno en Render y secrets de GitHub en un environment restringido. Las credenciales del administrador inicial nunca se versionan.
+
+### Limitaciones conocidas
+
+- Los contadores del rate limiting viven en memoria: se reinician con cada reinicio del servicio y no se comparten entre instancias. Con varias instancias haría falta un almacén común como Redis.
+- Los correos son simulados (se imprimen en consola).
+- No hay recuperación de contraseña, refresh tokens ni autenticación de dos factores. Un token solo se invalida cambiando la contraseña o desactivando la cuenta.
+- El registro es asíncrono: si falla por un motivo inesperado, el usuario ya recibió el 202 y el error solo queda en los logs.
 
 ## Modelo de datos
 
@@ -157,7 +210,28 @@ Todas las rutas cuelgan de `/api`. Excepto `/auth/register` y `/auth/login`, req
 | GET | `/reads-logs` | Admin | Registro de lecturas |
 | GET | `/changes-logs` | Admin | Registro de cambios |
 
-<!-- TODO: cuando exista, añadir aquí el enlace a Swagger (/api-docs) y a la colección de Postman -->
+## Probar la API
+
+### Con Postman
+
+[<img src="https://run.pstmn.io/button.svg" alt="Run In Postman" width="128" height="32">](https://god.gw.postman.com/run-collection/58038959-d6e84c4c-8492-4149-be0b-b260a33a685f?action=collection%2Ffork&source=rip_markdown&collection-url=entityId%3D58038959-d6e84c4c-8492-4149-be0b-b260a33a685f%26entityType%3Dcollection%26workspaceId%3Dca158b41-0e4e-4025-ac64-255bd4b51c08#?env%5BProd%5D=W3sia2V5IjoiYmFzZV91cmwiLCJ2YWx1ZSI6Imh0dHBzOi8vYXBpLWNsaW5pY2EtMm40ei5vbnJlbmRlci5jb20vYXBpIiwiZW5hYmxlZCI6dHJ1ZSwidHlwZSI6ImRlZmF1bHQifSx7ImtleSI6InRva2VuIiwiZW5hYmxlZCI6dHJ1ZSwidHlwZSI6ImRlZmF1bHQiLCJzZWNyZXQiOnRydWUsInZhbHVlIjoiIn1d)
+
+La colección incluye todos los endpoints organizados por carpetas, con el environment **Prod** ya apuntando a la demo.
+
+1. Pulsa el botón y elige *Fork Collection* (necesitas una cuenta gratuita de Postman).
+2. Selecciona el environment **Prod** en la esquina superior derecha.
+3. Inicia sesión con la petición de login; el resto de las peticiones usan el token obtenido.
+
+Más recursos:
+
+- [Workspace público en Postman](https://www.postman.com/alexander404-hz-6871307/api-clinica/collection/puhk2ks/clinica-api)
+- [Documentación publicada](https://documenter.getpostman.com/view/58038959/2sBYHVwK8e)
+- **Importación manual**: la colección y los environments están exportados en [`docs/postman/`](docs/postman/). Impórtalos desde Postman con *Import*.
+
+> La primera petición puede tardar hasta un minuto si el servicio estaba dormido (plan gratuito de Render).
+
+<!-- TODO: añadir aquí la cuenta de demo (usar una cuenta de paciente, no la de administrador) -->
+<!-- TODO: cuando exista, añadir aquí el enlace a Swagger (/api-docs) -->
 
 ## Ejecutar en local
 
@@ -228,6 +302,7 @@ Decisiones de diseño:
 - **Migrar antes de desplegar**, para que el código nuevo nunca corra contra un esquema viejo.
 - **Un grupo de `concurrency` compartido**, para que una migración y la carga inicial no se ejecuten a la vez.
 - **Dos conexiones a la base**: la API usa la URL con *pooling* para soportar mejor los reinicios y arranques en frío de Render, y las migraciones usan la conexión directa (`directUrl` en `schema.prisma`).
+- **Prisma con el adaptador `pg`**: durante las pruebas, el motor por defecto de Prisma 6 dio timeouts del pool de conexiones tras unos minutos de inactividad contra Prisma Postgres, mientras que el driver `pg` respondía con normalidad. Con el adaptador `@prisma/adapter-pg` esos timeouts no se reprodujeron.
 - **Secrets en un environment `production`** de GitHub, restringido a la rama principal.
 - **Carga inicial separada del despliegue**: se ejecuta una sola vez y de forma manual, así los datos iniciales no se vuelven a tocar en cada push.
 
@@ -236,6 +311,7 @@ Decisiones de diseño:
 ```text
 .
 ├── .github/workflows/   # Deploy e Initialize data
+├── docs/postman/        # Colección y environments de Postman
 ├── prisma/              # schema, migraciones, seed y bootstrap
 └── src/
     ├── constants/       # Constantes y códigos de error
