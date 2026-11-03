@@ -22,6 +22,28 @@ if (process.env.NODE_ENV === "production") {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(LoggerMiddleware);
+
+const { Client } = require("pg");
+
+async function medir(url) {
+  const t0 = Date.now();
+  const client = new Client({ connectionString: url });
+  await client.connect();
+  const t1 = Date.now();
+  await client.query("SELECT 1");
+  const t2 = Date.now();
+  await client.end();
+  return { conectarMs: t1 - t0, consultaMs: t2 - t1 };
+}
+
+app.get("/debug/db", async (req, res) => {
+  const [pooled, direct] = await Promise.all([
+    medir(process.env.DATABASE_URL),
+    medir(process.env.DIRECT_DATABASE_URL),
+  ]);
+  res.json({ pooled, direct });
+});
+
 app.use("/api", routes);
 
 app.get("/", (req, res) => {
