@@ -33,7 +33,9 @@ const prisma = new PrismaClient({
 // Aviso si alguna consulta vuelve a tardar demasiado
 prisma.$on("query", (e) => {
   if (e.duration > 2000) {
-    console.warn(`[db] consulta lenta ${e.duration}ms: ${e.query.slice(0, 150)}`);
+    console.warn(
+      `[db] consulta lenta ${e.duration}ms: ${e.query.slice(0, 150)}`,
+    );
   }
 });
 

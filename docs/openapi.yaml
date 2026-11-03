@@ -8,7 +8,7 @@ info:
 
     **Cómo probarla**
 
-    1. Ejecuta `POST /auth/login` con una cuenta de demo y copia el valor de `token`.
+    1. Ejecuta `POST /auth/login` (el ejemplo ya trae la cuenta de demo, de paciente: usuario `JP26001`, contraseña `123Abc**`) y copia el valor de `token`.
     2. Pulsa el botón **Authorize** (arriba a la derecha) y pega el token.
     3. Ya puedes ejecutar los endpoints protegidos con **Try it out**.
 
@@ -1182,12 +1182,12 @@ components:
           type: string
           maxLength: 254
           description: Correo (se pasa a minúsculas) o nombre de usuario (se pasa a mayúsculas).
-          example: AE26002
+          example: JP26001
         password:
           type: string
           format: password
           maxLength: 72
-          example: Clave#2026
+          example: "123Abc**"
 
     LoginResponse:
       type: object
