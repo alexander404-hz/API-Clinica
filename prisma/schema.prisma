@@ -5,15 +5,20 @@
 // Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
-  provider = "prisma-client-js"
-  output   = "../generated/prisma"
+  provider   = "prisma-client-js"
+  output     = "../generated/prisma"
   engineType = "client"
 }
 
 datasource db {
   provider  = "postgresql"
-  url       = env("DATABASE_URL") // Se usará para las consultas del servidor Express (Modo Pool)
-  directUrl = env("DIRECT_DATABASE_URL") // Se usará solo para migraciones (Modo Directo)
+  // Conexión DIRECTA (db.prisma.io). En runtime la app no la lee de aquí,
+  // sino a través del adaptador pg (ver prisma.js).
+  // No usar la pooled (pooled.db.prisma.io): en nov 2026 su primera consulta
+  // tras ~2 min sin uso tardaba entre 18 y 110 s.
+  url       = env("DATABASE_URL")
+  // También directa. La usa la CLI de Prisma para migraciones (migrate deploy).
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 enum Role {
