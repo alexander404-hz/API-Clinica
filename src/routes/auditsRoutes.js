@@ -33,7 +33,7 @@ router.get(
   "/changes-logs",
   listLimiter,
   validate(listChangesLogsValidator, "query"),
-  auditReads("ChangeLog"),
+  auditReads("ChangesLog"),
   listChangesLogs,
 );
 

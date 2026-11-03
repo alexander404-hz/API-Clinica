@@ -75,6 +75,14 @@ const validateGenerateTimes = (
   const minutesBetweenStartEnd = (end.value - start.value) / (1000 * 60);
   const minutesDuration = duration.value / (1000 * 60);
 
+  if (minutesDuration <= 0) {
+    return {
+      start,
+      end,
+      duration: { error: "The duration must be greater than 00:00." },
+    };
+  }
+
   if (minutesDuration > minutesBetweenStartEnd) {
     return {
       start,
@@ -154,7 +162,13 @@ exports.generateTimeBlocksValidator = (body) => {
   const cleaned = {};
   const check = fieldChecker(errors, cleaned);
 
-  const times = validateGenerateTimes(startTime, endTime, duration, true);
+  const times = validateGenerateTimes(
+    startTime,
+    endTime,
+    duration,
+    "Duration",
+    true,
+  );
 
   check("startTime", times.start);
   check("endTime", times.end);

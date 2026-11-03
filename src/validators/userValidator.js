@@ -14,6 +14,7 @@ const {
   validateSearch,
   validateLimit,
   validateIntegerParam,
+  validateBooleanParam,
 } = require("./commonValidator");
 
 const validateName = (value, label = "Name", required = false) => {
@@ -60,7 +61,7 @@ exports.checkUserFieldsToFilter = (query, check) => {
   check("lastName", validateName(lastName, "Last name"));
   check("username", validateString(username, "Username"));
   check("email", validateString(email, "Email"));
-  check("isActive", validateBoolean(isActive, "Is Active"));
+  check("isActive", validateBooleanParam(isActive, "Is Active"));
 
   const created = validateIsoDateRange(
     createdFrom,

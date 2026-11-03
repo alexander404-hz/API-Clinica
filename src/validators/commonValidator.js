@@ -112,6 +112,16 @@ exports.validateSearch = (value, label = "Search") => {
 };
 
 exports.validateBoolean = (value, label = "Boolean", required = false) => {
+  if (value === undefined || value === null || value === "") {
+    return required ? { error: `${label} is required.` } : { value: undefined };
+  }
+  if (typeof value !== "boolean") {
+    return { error: `${label} must be true or false.` };
+  }
+  return { value };
+};
+
+exports.validateBooleanParam = (value, label = "Boolean", required = false) => {
   const result = exports.validateString(value, label, required);
   if (result.error || result.value === undefined) return result;
 

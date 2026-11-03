@@ -97,7 +97,7 @@ exports.listAppointmentsService = async (query, currentUser) => {
       AND: conditions,
     },
     select: appointmentSelectFor(currentUser),
-    orderBy: { startsAt: "desc" },
+    orderBy: { id: "desc", startsAt: "desc" },
     limit,
     cursor,
     flatten: serializeAppointment,

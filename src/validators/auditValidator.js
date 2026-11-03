@@ -1,8 +1,13 @@
 const AppError = require("../utils/AppError");
 const { VALIDATION_ERROR } = require("../constants/errorCodes");
-const { VALID_MODEL_NAMES, VALID_READ_ACTIONS } = require("../constants/audit");
 const { VALID_ROLES } = require("../constants/user");
 const { fieldChecker } = require("./validatorUtils");
+
+const {
+  VALID_MODEL_NAMES,
+  VALID_READ_ACTIONS,
+  VALID_CHANGE_ACTIONS,
+} = require("../constants/audit");
 
 const {
   validateString,
@@ -11,16 +16,15 @@ const {
   validateMultiList,
   validateSearch,
   validateLimit,
-  validateBoolean,
+  validateBooleanParam,
 } = require("./commonValidator");
 
 const checkAuditFieldsToFilter = (query, check) => {
-  const { actorId, actorRole, action, entity, entityId } = query;
+  const { actorId, actorRole, entity, entityId } = query;
   const { ip, createdFrom, createdTo } = query;
 
   check("actorId", validateIntegerParam(actorId, "Actor Id"));
   check("actorRole", validateMultiList(actorRole, "Actor Role", VALID_ROLES));
-  check("action", validateMultiList(action, "Action", VALID_READ_ACTIONS));
   check("entity", validateMultiList(entity, "Entity", VALID_MODEL_NAMES));
   check("entityId", validateIntegerParam(entityId, "Entity Id"));
   check("ip", validateString(ip, "ip"));
@@ -37,13 +41,15 @@ const checkAuditFieldsToFilter = (query, check) => {
 };
 
 exports.listReadsLogsValidator = (query) => {
-  const { search, limit, cursor } = query;
+  const { search, action, limit, cursor } = query;
 
   const errors = [];
   const cleaned = {};
   const check = fieldChecker(errors, cleaned);
 
   check("search", validateSearch(search));
+
+  check("action", validateMultiList(action, "Action", VALID_READ_ACTIONS));
 
   checkAuditFieldsToFilter(query, check);
 
@@ -58,7 +64,7 @@ exports.listReadsLogsValidator = (query) => {
 };
 
 exports.listChangesLogsValidator = (query) => {
-  const { search, hasActor, limit, cursor } = query;
+  const { search, hasActor, action, limit, cursor } = query;
 
   const errors = [];
   const cleaned = {};
@@ -66,8 +72,10 @@ exports.listChangesLogsValidator = (query) => {
 
   check("search", validateSearch(search));
 
+  check("action", validateMultiList(action, "Action", VALID_CHANGE_ACTIONS));
+
   checkAuditFieldsToFilter(query, check);
-  check("hasActor", validateBoolean(hasActor, "Has actor"));
+  check("hasActor", validateBooleanParam(hasActor, "Has actor"));
 
   check("limit", validateLimit(limit));
   check("cursor", validateIntegerParam(cursor, "Cursor"));

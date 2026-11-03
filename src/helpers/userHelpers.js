@@ -49,7 +49,7 @@ exports.generateHashedPassword = (plainPassword) => {
 
 exports.assertNotSelf = (id, currentUserId, label) => {
   if (id === currentUserId) {
-    throw new AppError(`You cannot ${label} your own account.`, 409, FORBIDDEN);
+    throw new AppError(`You cannot ${label} your own account.`, 403, FORBIDDEN);
   }
 };
 

@@ -1,0 +1,2241 @@
+openapi: 3.0.3
+
+info:
+  title: API Clínica
+  version: 1.0.0
+  description: |
+    API REST para la gestión de citas médicas: pacientes, bloques horarios, citas y auditoría.
+
+    **Cómo probarla**
+
+    1. Ejecuta `POST /auth/login` con una cuenta de demo y copia el valor de `token`.
+    2. Pulsa el botón **Authorize** (arriba a la derecha) y pega el token.
+    3. Ya puedes ejecutar los endpoints protegidos con **Try it out**.
+
+    > El servicio de producción corre en un plan gratuito: si estaba dormido, la primera petición puede tardar hasta un minuto.
+
+    **Convenciones**
+
+    - **Fechas y horas**: las fechas se devuelven en ISO 8601 (UTC). Los bloques horarios usan `HH:mm` (24 h).
+    - **Zona horaria de la clínica**: `America/El_Salvador` (UTC-6, sin horario de verano). Un día sin hora (por ejemplo, el parámetro `date` de los bloques disponibles) se interpreta en esa zona.
+    - **Paginación por cursor**: los listados aceptan `limit` (por defecto 30, máximo 100) y `cursor`, y devuelven `items` y `nextCursor`. Cuando `nextCursor` es `null`, no hay más páginas.
+    - **Filtros con varios valores**: se envían una sola vez, separados por comas (por ejemplo `status=SCHEDULED,COMPLETED`).
+    - **Errores**: siempre con el mismo formato (esquema `Error`), con un `code` estable y, cuando aplica, `details` por campo. Cualquier endpoint puede responder `500` con el código `INTERNAL_ERROR`.
+    - **Roles**: `ADMIN` y `PATIENT`. La información devuelta puede variar según el rol del usuario autenticado.
+
+servers:
+  - url: https://api-clinica-2n4z.onrender.com/api
+    description: Producción (Render)
+  - url: http://localhost:3005/api
+    description: Local
+
+tags:
+  - name: Auth
+    description: Registro, inicio de sesión y cambio de contraseña
+  - name: Usuarios
+  - name: Administradores
+  - name: Pacientes
+  - name: Bloques horarios
+  - name: Citas
+  - name: Auditoría
+
+# Todas las rutas exigen token salvo que se indique `security: []`
+security:
+  - bearerAuth: []
+
+paths:
+  # ---------------------------------------------------------------- AUTH
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Registrar un paciente
+      description: |
+        Responde siempre `202` con el mismo mensaje y procesa el registro en segundo plano,
+        de modo que no se pueda averiguar si un correo o un número de seguro ya estaban registrados.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "202":
+          description: Solicitud aceptada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "400": { $ref: "#/components/responses/BadRequestRegister" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Iniciar sesión
+      description: |
+        Acepta correo o nombre de usuario en `identifier`. Devuelve un token JWT válido por 1 hora.
+        Una cuenta inexistente y una contraseña incorrecta responden igual.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Sesión iniciada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400": { $ref: "#/components/responses/BadRequestLogin" }
+        "401":
+          description: Credenciales inválidas (`INVALID_CREDENTIALS`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: INVALID_CREDENTIALS
+                  message: Invalid credentials
+        "403":
+          description: Cuenta deshabilitada (`ACCOUNT_DISABLED`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: ACCOUNT_DISABLED
+                  message: Account disabled
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /auth/change-password:
+    post:
+      tags: [Auth]
+      summary: Cambiar la contraseña
+      description: |
+        Devuelve un token nuevo; los tokens emitidos antes del cambio dejan de ser válidos.
+        Es la única ruta autenticada disponible cuando `mustChangePassword` es `true`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+      responses:
+        "200":
+          description: Contraseña cambiada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "400":
+          description: Datos inválidos (`VALIDATION_ERROR`) o contraseña actual incorrecta (`INVALID_CREDENTIALS`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                wrongCurrentPassword:
+                  summary: Contraseña actual incorrecta
+                  value:
+                    error:
+                      code: INVALID_CREDENTIALS
+                      message: Current password is incorrect.
+                invalidNewPassword:
+                  summary: Contraseña nueva inválida
+                  value:
+                    error:
+                      code: VALIDATION_ERROR
+                      message: Validation failed
+                      details:
+                        - field: newPassword
+                          message: New password must be different.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  # ------------------------------------------------------------- USUARIOS
+  /users/me:
+    get:
+      tags: [Usuarios]
+      summary: Ver mi perfil
+      responses:
+        "200":
+          description: Perfil del usuario autenticado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+    patch:
+      tags: [Usuarios]
+      summary: Actualizar mi perfil
+      description: |
+        Cada rol puede editar solo algunos campos: el administrador, `firstName`, `lastName` y `email`;
+        el paciente, solo `email`. Enviar otro campo devuelve 403 (`FORBIDDEN`) indicando cuáles no se permiten.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMyProfileRequest"
+      responses:
+        "200":
+          description: Perfil actualizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400": { $ref: "#/components/responses/BadRequestUserUpdate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/ForbiddenEditFields" }
+        "409": { $ref: "#/components/responses/ConflictFieldTaken" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /users:
+    get:
+      tags: [Usuarios]
+      summary: Listar usuarios
+      description: |
+        **Acceso:** administrador.
+
+        No incluye las cuentas internas del sistema. Los filtros de texto (`firstName`, `lastName`, `username`, `email`)
+        buscan coincidencias parciales, sin distinguir mayúsculas.
+      parameters:
+        - $ref: "#/components/parameters/Search"
+        - $ref: "#/components/parameters/FirstName"
+        - $ref: "#/components/parameters/LastName"
+        - $ref: "#/components/parameters/Username"
+        - $ref: "#/components/parameters/Email"
+        - $ref: "#/components/parameters/IsActive"
+        - $ref: "#/components/parameters/Role"
+        - $ref: "#/components/parameters/Deleted"
+        - $ref: "#/components/parameters/CreatedFrom"
+        - $ref: "#/components/parameters/CreatedTo"
+        - $ref: "#/components/parameters/UpdatedFrom"
+        - $ref: "#/components/parameters/UpdatedTo"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Página de usuarios
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserPage"
+        "400": { $ref: "#/components/responses/BadRequestQuery" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /users/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Usuarios]
+      summary: Ver un usuario
+      description: "**Acceso:** administrador."
+      responses:
+        "200":
+          description: Usuario
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400": { $ref: "#/components/responses/BadRequestId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFoundUser" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+    patch:
+      tags: [Usuarios]
+      summary: Actualizar un usuario
+      description: |
+        **Acceso:** administrador.
+
+        Un administrador no puede desactivar su propia cuenta (403, `FORBIDDEN`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+      responses:
+        "200":
+          description: Usuario actualizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400": { $ref: "#/components/responses/BadRequestUserUpdate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/ForbiddenSelfDeactivate" }
+        "404": { $ref: "#/components/responses/NotFoundUser" }
+        "409": { $ref: "#/components/responses/ConflictFieldTaken" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  # ------------------------------------------------------- ADMINISTRADORES
+  /admins:
+    post:
+      tags: [Administradores]
+      summary: Crear un administrador
+      description: |
+        **Acceso:** administrador.
+
+        El nombre de usuario y la contraseña temporal se generan automáticamente y se envían por correo
+        (el envío es simulado). La cuenta nueva debe cambiar su contraseña en el primer inicio de sesión
+        (`mustChangePassword`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+      responses:
+        "201":
+          description: Administrador creado
+          headers:
+            Location:
+              description: Ruta del usuario creado.
+              schema: { type: string, example: /api/users/3 }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400": { $ref: "#/components/responses/BadRequestUserCreate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/ConflictFieldTaken" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /admins/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    delete:
+      tags: [Administradores]
+      summary: Eliminar un administrador
+      description: |
+        **Acceso:** administrador. Borrado lógico: la cuenta queda desactivada y deja de poder iniciar sesión.
+
+        Un administrador no puede eliminar su propia cuenta (403, `FORBIDDEN`).
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400": { $ref: "#/components/responses/BadRequestId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/ForbiddenSelfDelete" }
+        "404": { $ref: "#/components/responses/NotFoundAdmin" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  # ------------------------------------------------------------- PACIENTES
+  /patients/me:
+    get:
+      tags: [Pacientes]
+      summary: Ver mi perfil de paciente
+      description: "**Acceso:** paciente."
+      responses:
+        "200":
+          description: Perfil de paciente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PatientDetails"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+    patch:
+      tags: [Pacientes]
+      summary: Actualizar mi perfil de paciente
+      description: |
+        **Acceso:** paciente.
+
+        Un paciente puede editar solo `email` y `preferredName`. Enviar otro campo devuelve
+        403 (`FORBIDDEN`) indicando cuáles no se permiten.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMyPatientRequest"
+      responses:
+        "200":
+          description: Perfil actualizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PatientDetails"
+        "400": { $ref: "#/components/responses/BadRequestMyPatientUpdate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/ForbiddenEditFieldsPatient" }
+        "409": { $ref: "#/components/responses/ConflictFieldTaken" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /patients:
+    post:
+      tags: [Pacientes]
+      summary: Crear un paciente
+      description: |
+        **Acceso:** administrador.
+
+        El nombre de usuario y la contraseña temporal se generan automáticamente y se envían por correo
+        (el envío es simulado).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePatientRequest"
+      responses:
+        "201":
+          description: Paciente creado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PatientDetails"
+        "400": { $ref: "#/components/responses/BadRequestPatientCreate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/ConflictFieldTakenPatient" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+    get:
+      tags: [Pacientes]
+      summary: Listar pacientes
+      description: |
+        **Acceso:** administrador.
+
+        Los filtros de texto (`firstName`, `lastName`, `username`, `email`, `insuranceNumber`, `preferredName`)
+        buscan coincidencias parciales, sin distinguir mayúsculas.
+      parameters:
+        - $ref: "#/components/parameters/Search"
+        - $ref: "#/components/parameters/FirstName"
+        - $ref: "#/components/parameters/LastName"
+        - $ref: "#/components/parameters/Username"
+        - $ref: "#/components/parameters/Email"
+        - $ref: "#/components/parameters/IsActive"
+        - $ref: "#/components/parameters/InsuranceNumber"
+        - $ref: "#/components/parameters/PreferredName"
+        - $ref: "#/components/parameters/HasPreferredName"
+        - $ref: "#/components/parameters/Deleted"
+        - $ref: "#/components/parameters/CreatedFrom"
+        - $ref: "#/components/parameters/CreatedTo"
+        - $ref: "#/components/parameters/UpdatedFrom"
+        - $ref: "#/components/parameters/UpdatedTo"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Página de pacientes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PatientPage"
+        "400": { $ref: "#/components/responses/BadRequestQuery" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /patients/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Pacientes]
+      summary: Ver un paciente
+      description: "**Acceso:** administrador."
+      responses:
+        "200":
+          description: Paciente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PatientDetails"
+        "400": { $ref: "#/components/responses/BadRequestId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFoundPatient" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+    patch:
+      tags: [Pacientes]
+      summary: Actualizar un paciente
+      description: "**Acceso:** administrador."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePatientRequest"
+      responses:
+        "200":
+          description: Paciente actualizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PatientDetails"
+        "400": { $ref: "#/components/responses/BadRequestPatientUpdate" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFoundPatient" }
+        "409": { $ref: "#/components/responses/ConflictFieldTakenPatient" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+    delete:
+      tags: [Pacientes]
+      summary: Eliminar un paciente
+      description: |
+        **Acceso:** administrador. Borrado lógico: la cuenta queda desactivada y deja de poder iniciar sesión.
+
+        Además, se cancelan sus citas futuras que estuvieran en estado `SCHEDULED`.
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400": { $ref: "#/components/responses/BadRequestId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFoundPatient" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  # ------------------------------------------------------ BLOQUES HORARIOS
+  /timeBlocks/available:
+    get:
+      tags: [Bloques horarios]
+      summary: Listar bloques disponibles de un día
+      description: |
+        Devuelve los bloques del día indicado que no tienen una cita encima y que cumplen las reglas de reserva:
+        un paciente debe reservar con al menos 2 horas de anticipación; nadie puede reservar un día ya pasado
+        ni con más de 60 días de antelación (400 `VALIDATION_ERROR`).
+      parameters:
+        - name: date
+          in: query
+          required: true
+          description: Día a consultar (en hora de la clínica), con formato `YYYY-MM-DD`.
+          schema: { type: string, format: date, example: "2026-12-01" }
+      responses:
+        "200":
+          description: Bloques disponibles, con la fecha y hora reales de inicio y fin (UTC)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AvailableTimeBlock"
+        "400": { $ref: "#/components/responses/BadRequestAvailable" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /timeBlocks/generate:
+    post:
+      tags: [Bloques horarios]
+      summary: Generar bloques en lote
+      description: |
+        **Acceso:** administrador.
+
+        Divide el rango entre `startTime` y `endTime` en bloques consecutivos de la duración indicada.
+        Con `replace` se decide qué hacer con los bloques que ya existen:
+
+        - `NONE` (por defecto): no borra nada y responde 409 (`CONFLICT`) si el rango se solapa con algún bloque.
+        - `OVERLAP`: elimina antes los bloques que se solapan con el rango.
+        - `ALL`: **elimina todos** los bloques existentes antes de generar.
+
+        Devuelve todos los bloques contenidos en el rango.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateTimeBlocksRequest"
+      responses:
+        "201":
+          description: Bloques del rango, ordenados por hora de inicio
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TimeBlock"
+        "400": { $ref: "#/components/responses/BadRequestTimeBlock" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/ConflictTimeBlock" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /timeBlocks:
+    post:
+      tags: [Bloques horarios]
+      summary: Crear un bloque horario
+      description: |
+        **Acceso:** administrador.
+
+        Si se solapa con un bloque existente, responde 409 (`CONFLICT`) indicando con cuál.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTimeBlockRequest"
+      responses:
+        "201":
+          description: Bloque creado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimeBlock"
+        "400": { $ref: "#/components/responses/BadRequestTimeBlock" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/ConflictTimeBlock" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+    get:
+      tags: [Bloques horarios]
+      summary: Listar bloques horarios
+      description: Devuelve todos los bloques de la plantilla diaria, sin paginar.
+      responses:
+        "200":
+          description: Bloques horarios
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TimeBlock"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /timeBlocks/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Bloques horarios]
+      summary: Ver un bloque horario
+      responses:
+        "200":
+          description: Bloque horario
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimeBlock"
+        "400": { $ref: "#/components/responses/BadRequestId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFoundTimeBlock" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+    patch:
+      tags: [Bloques horarios]
+      summary: Actualizar un bloque horario
+      description: |
+        **Acceso:** administrador.
+
+        Se pueden enviar uno o los dos campos; el que falte conserva su valor actual. Si el rango resultante
+        no es válido (el fin no es posterior al inicio) responde 400, y si se solapa con otro bloque, 409 (`CONFLICT`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTimeBlockRequest"
+      responses:
+        "200":
+          description: Bloque actualizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TimeBlock"
+        "400": { $ref: "#/components/responses/BadRequestTimeBlock" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFoundTimeBlock" }
+        "409": { $ref: "#/components/responses/ConflictTimeBlock" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+    delete:
+      tags: [Bloques horarios]
+      summary: Eliminar un bloque horario
+      description: "**Acceso:** administrador."
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400": { $ref: "#/components/responses/BadRequestId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFoundTimeBlock" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  # ----------------------------------------------------------------- CITAS
+  /appointments:
+    post:
+      tags: [Citas]
+      summary: Agendar una cita
+      description: |
+        **Acceso:** paciente o administrador.
+
+        `startsAt` y `endsAt` deben coincidir exactamente con un bloque libre devuelto por
+        `GET /timeBlocks/available`; si no, responde 409 (`CONFLICT`). Ese 409 no indica la causa: es el mismo
+        mensaje si el bloque no existe, ya tiene una cita o queda fuera de la ventana de reserva.
+        Un día que ya pasó o con más de 60 días de antelación devuelve 400 (`VALIDATION_ERROR`).
+
+        Un paciente siempre reserva para sí mismo (se ignora `patientId`). Un administrador debe indicar
+        `patientId` de un paciente existente (404 si no existe).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAppointmentRequest"
+      responses:
+        "201":
+          description: Cita creada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Appointment"
+        "400": { $ref: "#/components/responses/BadRequestAppointment" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFoundPatient" }
+        "409": { $ref: "#/components/responses/ConflictBookingSlot" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+    get:
+      tags: [Citas]
+      summary: Listar citas
+      description: |
+        **Acceso:** paciente o administrador.
+
+        Un paciente solo ve sus propias citas y con los campos básicos; para él se ignoran los filtros
+        `search`, `patientId` y `statusChangedById`. El administrador ve todas, con el paciente y el usuario
+        que cambió el estado. Se ordenan por fecha de inicio, de la más reciente a la más antigua.
+      parameters:
+        - $ref: "#/components/parameters/Search"
+        - $ref: "#/components/parameters/Status"
+        - $ref: "#/components/parameters/PatientIdFilter"
+        - $ref: "#/components/parameters/StartsFrom"
+        - $ref: "#/components/parameters/StartsTo"
+        - $ref: "#/components/parameters/EndsFrom"
+        - $ref: "#/components/parameters/EndsTo"
+        - $ref: "#/components/parameters/StatusChangedFrom"
+        - $ref: "#/components/parameters/StatusChangedTo"
+        - $ref: "#/components/parameters/StatusChangedById"
+        - $ref: "#/components/parameters/CreatedFrom"
+        - $ref: "#/components/parameters/CreatedTo"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Página de citas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppointmentPage"
+        "400": { $ref: "#/components/responses/BadRequestQuery" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /appointments/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags: [Citas]
+      summary: Ver una cita
+      description: |
+        **Acceso:** paciente o administrador.
+
+        Un paciente que consulta una cita que no es suya recibe 404. El administrador recibe además
+        `patient` y `statusChangedBy`.
+      responses:
+        "200":
+          description: Cita
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppointmentDetails"
+        "400": { $ref: "#/components/responses/BadRequestId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFoundAppointment" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /appointments/{id}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags: [Citas]
+      summary: Cancelar una cita
+      description: |
+        **Acceso:** paciente (solo sus citas, si no, 404) o administrador.
+
+        Solo se puede cancelar una cita `SCHEDULED` o `NO_SHOW`; en otro estado responde 409 (`CONFLICT`). Además:
+
+        - Un paciente debe cancelar con al menos 72 horas de anticipación al inicio (409 `CONFLICT`).
+          El administrador no tiene esa restricción.
+        - Cancelar una cita `NO_SHOW` solo puede hacerlo un administrador (403 `FORBIDDEN`).
+      responses:
+        "200":
+          description: Cita cancelada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppointmentDetails"
+        "400": { $ref: "#/components/responses/BadRequestId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/ForbiddenCancel" }
+        "404": { $ref: "#/components/responses/NotFoundAppointment" }
+        "409": { $ref: "#/components/responses/ConflictCancel" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /appointments/{id}/complete:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags: [Citas]
+      summary: Marcar una cita como completada
+      description: |
+        **Acceso:** administrador.
+
+        Solo se puede completar una cita `SCHEDULED` o `NO_SHOW`; en otro estado responde 409 (`CONFLICT`).
+        Una cita `SCHEDULED` solo puede completarse cuando ya empezó el día de la cita (hora de la clínica,
+        409 `CONFLICT`); una `NO_SHOW` puede corregirse a `COMPLETED` en cualquier momento.
+      responses:
+        "200":
+          description: Cita completada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppointmentDetails"
+        "400": { $ref: "#/components/responses/BadRequestId" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFoundAppointment" }
+        "409": { $ref: "#/components/responses/ConflictComplete" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  # ------------------------------------------------------------- AUDITORÍA
+  /audit/reads-logs:
+    get:
+      tags: [Auditoría]
+      summary: Registro de lecturas
+      description: "**Acceso:** administrador. Consultas exitosas hechas por los usuarios."
+      parameters:
+        - $ref: "#/components/parameters/Search"
+        - $ref: "#/components/parameters/ActorId"
+        - $ref: "#/components/parameters/ActorRole"
+        - $ref: "#/components/parameters/ReadAction"
+        - $ref: "#/components/parameters/Entity"
+        - $ref: "#/components/parameters/EntityId"
+        - $ref: "#/components/parameters/Ip"
+        - $ref: "#/components/parameters/CreatedFrom"
+        - $ref: "#/components/parameters/CreatedTo"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Página del registro de lecturas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadsLogPage"
+        "400": { $ref: "#/components/responses/BadRequestQuery" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /audit/changes-logs:
+    get:
+      tags: [Auditoría]
+      summary: Registro de cambios
+      description: "**Acceso:** administrador. Creaciones, actualizaciones y borrados, registrados por triggers de la base de datos."
+      parameters:
+        - $ref: "#/components/parameters/Search"
+        - $ref: "#/components/parameters/ActorId"
+        - $ref: "#/components/parameters/ActorRole"
+        - $ref: "#/components/parameters/ChangeAction"
+        - $ref: "#/components/parameters/Entity"
+        - $ref: "#/components/parameters/EntityId"
+        - $ref: "#/components/parameters/Ip"
+        - $ref: "#/components/parameters/HasActor"
+        - $ref: "#/components/parameters/CreatedFrom"
+        - $ref: "#/components/parameters/CreatedTo"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Página del registro de cambios
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangesLogPage"
+        "400": { $ref: "#/components/responses/BadRequestQuery" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token obtenido en `POST /auth/login`.
+
+  # ------------------------------------------------------------ PARÁMETROS
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+    Limit:
+      name: limit
+      in: query
+      description: Elementos por página.
+      schema: { type: integer, minimum: 1, maximum: 100, default: 30 }
+    Cursor:
+      name: cursor
+      in: query
+      description: Valor de `nextCursor` de la página anterior.
+      schema: { type: integer, minimum: 1 }
+    Search:
+      name: search
+      in: query
+      description: Hasta 5 palabras separadas por espacios (sin comas).
+      schema: { type: string }
+
+    # Fechas (ISO 8601)
+    CreatedFrom:
+      name: createdFrom
+      in: query
+      description: Creado desde esta fecha. Formato `YYYY-MM-DD` o `YYYY-MM-DDTHH:mm:ssZ`.
+      schema: { type: string, example: "2026-10-01" }
+    CreatedTo:
+      name: createdTo
+      in: query
+      description: Creado hasta esta fecha. Si se envía solo `YYYY-MM-DD`, incluye todo el día (UTC).
+      schema: { type: string, example: "2026-10-31" }
+    UpdatedFrom:
+      name: updatedFrom
+      in: query
+      description: Actualizado desde esta fecha. Formato `YYYY-MM-DD` o `YYYY-MM-DDTHH:mm:ssZ`.
+      schema: { type: string }
+    UpdatedTo:
+      name: updatedTo
+      in: query
+      description: Actualizado hasta esta fecha. Si se envía solo `YYYY-MM-DD`, incluye todo el día (UTC).
+      schema: { type: string }
+
+    # Usuarios y pacientes
+    FirstName:
+      name: firstName
+      in: query
+      description: Coincidencia parcial, sin distinguir mayúsculas.
+      schema: { type: string }
+    LastName:
+      name: lastName
+      in: query
+      description: Coincidencia parcial, sin distinguir mayúsculas.
+      schema: { type: string }
+    Username:
+      name: username
+      in: query
+      description: Coincidencia parcial, sin distinguir mayúsculas.
+      schema: { type: string }
+    Email:
+      name: email
+      in: query
+      description: Coincidencia parcial, sin distinguir mayúsculas.
+      schema: { type: string }
+    IsActive:
+      name: isActive
+      in: query
+      schema: { type: string, enum: ["true", "false"] }
+    Role:
+      name: role
+      in: query
+      description: Uno o varios roles, separados por comas (`ADMIN`, `PATIENT`).
+      schema: { type: string, example: "ADMIN,PATIENT" }
+    Deleted:
+      name: deleted
+      in: query
+      description: |
+        Por defecto solo se listan los registros no eliminados (borrado lógico).
+        `ONLY` lista solo los eliminados; `INCLUDE` los incluye junto con los demás.
+      schema: { type: string, enum: [ONLY, INCLUDE] }
+    InsuranceNumber:
+      name: insuranceNumber
+      in: query
+      description: Coincidencia parcial, sin distinguir mayúsculas.
+      schema: { type: string, example: INS-0111 }
+    PreferredName:
+      name: preferredName
+      in: query
+      description: Coincidencia parcial, sin distinguir mayúsculas.
+      schema: { type: string }
+    HasPreferredName:
+      name: hasPreferredName
+      in: query
+      schema: { type: string, enum: ["true", "false"] }
+
+    # Citas
+    Status:
+      name: status
+      in: query
+      description: Uno o varios estados, separados por comas (`SCHEDULED`, `CANCELLED`, `COMPLETED`, `NO_SHOW`).
+      schema: { type: string, example: "SCHEDULED,COMPLETED" }
+    PatientIdFilter:
+      name: patientId
+      in: query
+      schema: { type: integer, minimum: 1 }
+    StartsFrom:
+      name: startsFrom
+      in: query
+      description: Citas que empiezan desde esta fecha. Formato `YYYY-MM-DD` o `YYYY-MM-DDTHH:mm:ssZ`.
+      schema: { type: string }
+    StartsTo:
+      name: startsTo
+      in: query
+      description: Citas que empiezan hasta esta fecha. Si se envía solo `YYYY-MM-DD`, incluye todo el día (UTC).
+      schema: { type: string }
+    EndsFrom:
+      name: endsFrom
+      in: query
+      description: Citas que terminan desde esta fecha.
+      schema: { type: string }
+    EndsTo:
+      name: endsTo
+      in: query
+      description: Citas que terminan hasta esta fecha.
+      schema: { type: string }
+    StatusChangedFrom:
+      name: statusChangedFrom
+      in: query
+      description: Estado cambiado desde esta fecha.
+      schema: { type: string }
+    StatusChangedTo:
+      name: statusChangedTo
+      in: query
+      description: Estado cambiado hasta esta fecha.
+      schema: { type: string }
+    StatusChangedById:
+      name: statusChangedById
+      in: query
+      description: Id del usuario que cambió el estado.
+      schema: { type: integer, minimum: 1 }
+
+    # Auditoría
+    ActorId:
+      name: actorId
+      in: query
+      description: Id del usuario que realizó la acción.
+      schema: { type: integer, minimum: 1 }
+    ActorRole:
+      name: actorRole
+      in: query
+      description: Uno o varios roles, separados por comas (`ADMIN`, `PATIENT`).
+      schema: { type: string }
+    ReadAction:
+      name: action
+      in: query
+      description: Una o varias acciones, separadas por comas (`READ`, `LIST`, `SEARCH`).
+      schema: { type: string, example: "READ,LIST" }
+    ChangeAction:
+      name: action
+      in: query
+      description: Una o varias acciones, separadas por comas (`CREATE`, `UPDATE`, `DELETE`, `SOFT_DELETE`, `RESTORE`).
+      schema: { type: string, example: "CREATE,UPDATE" }
+    Entity:
+      name: entity
+      in: query
+      description: Una o varias entidades, separadas por comas (`User`, `Patient`, `TimeBlock`, `Appointment`, `ReadsLog`, `ChangesLog`).
+      schema: { type: string, example: "Appointment,Patient" }
+    EntityId:
+      name: entityId
+      in: query
+      schema: { type: integer, minimum: 1 }
+    Ip:
+      name: ip
+      in: query
+      description: Coincidencia parcial, sin distinguir mayúsculas.
+      schema: { type: string }
+    HasActor:
+      name: hasActor
+      in: query
+      description: Filtra los cambios hechos (`true`) o no (`false`) por un usuario identificado.
+      schema: { type: string, enum: ["true", "false"] }
+
+  # --------------------------------------------------------------- ESQUEMAS
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Código estable del error, pensado para que lo use el cliente.
+              enum:
+                - ACCOUNT_DISABLED
+                - CONFLICT
+                - ERROR
+                - FIELD_TAKEN
+                - FORBIDDEN
+                - INTERNAL_ERROR
+                - INVALID_BODY
+                - INVALID_CREDENTIALS
+                - INVALID_REFERENCE
+                - MUST_CHANGE_PASSWORD
+                - NOT_FOUND
+                - RATE_LIMITED
+                - RESOURCE_IN_USE
+                - TOKEN_INVALID
+                - TOKEN_MISSING
+                - VALIDATION_ERROR
+            message:
+              type: string
+            details:
+              type: array
+              description: Detalle por campo, cuando aplica.
+              items:
+                type: object
+                properties:
+                  field: { type: string }
+                  message: { type: string }
+
+    Message:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Thanks for registering! We've sent the next steps to your email. Please check your inbox.
+
+    TokenResponse:
+      type: object
+      properties:
+        token:
+          {
+            type: string,
+            description: JWT válido por 1 hora.,
+            example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...,
+          }
+
+    # ---- Campos reutilizables
+    FirstName:
+      type: string
+      maxLength: 50
+      description: Solo letras (con tildes), espacios, guiones y apóstrofes.
+      example: Abigail
+    LastName:
+      type: string
+      maxLength: 50
+      description: Solo letras (con tildes), espacios, guiones y apóstrofes.
+      example: España
+    Email:
+      type: string
+      format: email
+      maxLength: 254
+      description: Se guarda en minúsculas.
+      example: abigail@example.com
+    InsuranceNumber:
+      type: string
+      description: Con el formato `INS-` seguido de 4 dígitos. Se convierte a mayúsculas. Debe ser único.
+      example: INS-0111
+    PreferredName:
+      type: string
+      maxLength: 50
+      description: Solo letras, números, espacios, guiones y apóstrofes.
+      example: Abi
+    Password:
+      type: string
+      format: password
+      minLength: 8
+      maxLength: 72
+      description: |
+        Entre 8 y 72 caracteres (y como máximo 72 bytes en UTF-8). Debe incluir al menos una mayúscula,
+        una minúscula, un número y un carácter especial.
+      example: Clave#2026
+    ClockTime:
+      type: string
+      description: Hora en formato `HH:mm` (24 h), de 00:00 a 23:59.
+      example: "07:00"
+    Role:
+      type: string
+      enum: [ADMIN, PATIENT, SYSTEM]
+
+    # ---- Auth
+    RegisterRequest:
+      type: object
+      required: [firstName, lastName, email, insuranceNumber, password]
+      properties:
+        firstName: { $ref: "#/components/schemas/FirstName" }
+        lastName: { $ref: "#/components/schemas/LastName" }
+        email: { $ref: "#/components/schemas/Email" }
+        insuranceNumber: { $ref: "#/components/schemas/InsuranceNumber" }
+        preferredName: { $ref: "#/components/schemas/PreferredName" }
+        password: { $ref: "#/components/schemas/Password" }
+
+    LoginRequest:
+      type: object
+      required: [identifier, password]
+      properties:
+        identifier:
+          type: string
+          maxLength: 254
+          description: Correo (se pasa a minúsculas) o nombre de usuario (se pasa a mayúsculas).
+          example: AE26002
+        password:
+          type: string
+          format: password
+          maxLength: 72
+          example: Clave#2026
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          {
+            type: string,
+            description: JWT válido por 1 hora.,
+            example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...,
+          }
+        user:
+          type: object
+          properties:
+            id: { type: integer, example: 12 }
+            username: { type: string, example: AE26002 }
+            role: { $ref: "#/components/schemas/Role" }
+            mustChangePassword: { type: boolean, example: false }
+
+    ChangePasswordRequest:
+      type: object
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword:
+          type: string
+          format: password
+          maxLength: 72
+          example: Clave#2026
+        newPassword:
+          allOf:
+            - $ref: "#/components/schemas/Password"
+          description: Debe ser distinta de la contraseña actual y cumplir las reglas de contraseña.
+
+    # ---- Usuarios, administradores y pacientes
+    UserMin:
+      type: object
+      properties:
+        id: { type: integer, example: 1 }
+        firstName: { type: string, example: Juan }
+        lastName: { type: string, example: Pérez }
+        role: { $ref: "#/components/schemas/Role" }
+
+    UserBase:
+      allOf:
+        - $ref: "#/components/schemas/UserMin"
+        - type: object
+          properties:
+            username: { type: string, example: JP26001 }
+            email: { type: string, example: juan@example.com }
+
+    User:
+      allOf:
+        - $ref: "#/components/schemas/UserBase"
+        - type: object
+          properties:
+            isActive: { type: boolean }
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+            lastLoginAt: { type: string, format: date-time, nullable: true }
+            mustChangePassword: { type: boolean }
+            deletedAt:
+              type: string
+              format: date-time
+              nullable: true
+              description: Solo aparece al consultar registros eliminados con el filtro `deleted`.
+
+    UserPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/User" }
+        nextCursor:
+          type: integer
+          nullable: true
+          description: Cursor de la página siguiente, o `null` si no hay más.
+
+    CreateUserRequest:
+      type: object
+      required: [firstName, lastName, email]
+      properties:
+        firstName: { $ref: "#/components/schemas/FirstName" }
+        lastName: { $ref: "#/components/schemas/LastName" }
+        email: { $ref: "#/components/schemas/Email" }
+
+    CreatePatientRequest:
+      type: object
+      required: [firstName, lastName, email, insuranceNumber]
+      properties:
+        firstName: { $ref: "#/components/schemas/FirstName" }
+        lastName: { $ref: "#/components/schemas/LastName" }
+        email: { $ref: "#/components/schemas/Email" }
+        insuranceNumber: { $ref: "#/components/schemas/InsuranceNumber" }
+        preferredName: { $ref: "#/components/schemas/PreferredName" }
+
+    UpdateMyProfileRequest:
+      type: object
+      description: Todos los campos son opcionales. Los campos permitidos dependen del rol (ver el endpoint).
+      properties:
+        firstName: { $ref: "#/components/schemas/FirstName" }
+        lastName: { $ref: "#/components/schemas/LastName" }
+        email: { $ref: "#/components/schemas/Email" }
+
+    UpdateUserRequest:
+      type: object
+      description: Todos los campos son opcionales; solo se actualizan los enviados.
+      properties:
+        firstName: { $ref: "#/components/schemas/FirstName" }
+        lastName: { $ref: "#/components/schemas/LastName" }
+        email: { $ref: "#/components/schemas/Email" }
+        isActive: { type: boolean }
+
+    UpdateMyPatientRequest:
+      type: object
+      description: Todos los campos son opcionales; solo se actualizan los enviados.
+      properties:
+        email: { $ref: "#/components/schemas/Email" }
+        preferredName:
+          type: string
+          nullable: true
+          maxLength: 50
+          description: Enviar `null` para borrarlo.
+          example: Abi
+
+    UpdatePatientRequest:
+      type: object
+      description: Todos los campos son opcionales; solo se actualizan los enviados.
+      properties:
+        firstName: { $ref: "#/components/schemas/FirstName" }
+        lastName: { $ref: "#/components/schemas/LastName" }
+        email: { $ref: "#/components/schemas/Email" }
+        isActive: { type: boolean }
+        insuranceNumber: { $ref: "#/components/schemas/InsuranceNumber" }
+        preferredName:
+          type: string
+          nullable: true
+          maxLength: 50
+          description: Enviar `null` para borrarlo.
+          example: Abi
+
+    PatientSummary:
+      type: object
+      properties:
+        id: { type: integer, example: 12 }
+        firstName: { type: string, example: Abigail }
+        lastName: { type: string, example: España }
+        username: { type: string, example: AE26002 }
+        email: { type: string, example: abigail@example.com }
+        insuranceNumber: { type: string, example: INS-0111 }
+        preferredName: { type: string, nullable: true, example: Abi }
+
+    PatientDetails:
+      allOf:
+        - $ref: "#/components/schemas/PatientSummary"
+        - type: object
+          properties:
+            isActive: { type: boolean }
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+            lastLoginAt: { type: string, format: date-time, nullable: true }
+            mustChangePassword: { type: boolean }
+            deletedAt:
+              type: string
+              format: date-time
+              nullable: true
+              description: Solo aparece al consultar registros eliminados con el filtro `deleted`.
+
+    PatientPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/PatientDetails" }
+        nextCursor:
+          type: integer
+          nullable: true
+          description: Cursor de la página siguiente, o `null` si no hay más.
+
+    # ---- Bloques horarios
+    TimeBlock:
+      type: object
+      properties:
+        id: { type: integer, example: 81 }
+        startTime: { $ref: "#/components/schemas/ClockTime" }
+        endTime:
+          allOf:
+            - $ref: "#/components/schemas/ClockTime"
+          example: "07:30"
+
+    AvailableTimeBlock:
+      type: object
+      properties:
+        id: { type: integer, example: 81, description: Id del bloque horario. }
+        startsAt:
+          {
+            type: string,
+            format: date-time,
+            example: "2026-12-01T13:00:00.000Z",
+          }
+        endsAt:
+          {
+            type: string,
+            format: date-time,
+            example: "2026-12-01T13:30:00.000Z",
+          }
+
+    CreateTimeBlockRequest:
+      type: object
+      required: [startTime, endTime]
+      properties:
+        startTime: { $ref: "#/components/schemas/ClockTime" }
+        endTime:
+          allOf:
+            - $ref: "#/components/schemas/ClockTime"
+          description: Debe ser posterior a `startTime`.
+          example: "07:30"
+
+    UpdateTimeBlockRequest:
+      type: object
+      description: Ambos campos son opcionales. Si se envían los dos, `endTime` debe ser posterior a `startTime`.
+      properties:
+        startTime: { $ref: "#/components/schemas/ClockTime" }
+        endTime:
+          allOf:
+            - $ref: "#/components/schemas/ClockTime"
+          example: "07:30"
+
+    GenerateTimeBlocksRequest:
+      type: object
+      required: [startTime, endTime, duration]
+      properties:
+        startTime: { $ref: "#/components/schemas/ClockTime" }
+        endTime:
+          allOf:
+            - $ref: "#/components/schemas/ClockTime"
+          description: Debe ser posterior a `startTime`.
+          example: "12:00"
+        duration:
+          allOf:
+            - $ref: "#/components/schemas/ClockTime"
+          description: Duración de cada bloque en formato `HH:mm`. Debe ser mayor que `00:00` y no puede superar el rango entre inicio y fin.
+          example: "00:30"
+        replace:
+          type: string
+          enum: [NONE, OVERLAP, ALL]
+          default: NONE
+          description: Qué hacer con los bloques que ya existen (ver el endpoint). `ALL` elimina todos.
+
+    # ---- Citas
+    AppointmentStatus:
+      type: string
+      enum: [SCHEDULED, CANCELLED, COMPLETED, NO_SHOW]
+      description: |
+        Estados posibles de una cita. Transiciones permitidas: desde `SCHEDULED` a cualquiera de los otros tres;
+        desde `NO_SHOW` a `COMPLETED` o `CANCELLED`; `COMPLETED` y `CANCELLED` son finales.
+        Un cierre diario automático (00:05, hora de la clínica) marca como `NO_SHOW` las citas `SCHEDULED` de días anteriores.
+
+    CreateAppointmentRequest:
+      type: object
+      required: [startsAt, endsAt]
+      properties:
+        startsAt:
+          type: string
+          format: date-time
+          description: Con zona horaria obligatoria (`Z` o `±HH:mm`). Debe coincidir con el inicio de un bloque libre.
+          example: "2026-12-01T05:00:00Z"
+        endsAt:
+          type: string
+          format: date-time
+          description: Debe ser posterior a `startsAt` y coincidir con el fin del bloque.
+          example: "2026-12-01T05:30:00Z"
+        patientId:
+          type: integer
+          minimum: 1
+          description: Obligatorio para un administrador. Un paciente siempre reserva para sí mismo y este campo se ignora.
+          example: 12
+
+    Appointment:
+      type: object
+      properties:
+        id: { type: integer, example: 7 }
+        startsAt:
+          {
+            type: string,
+            format: date-time,
+            example: "2026-12-01T05:00:00.000Z",
+          }
+        endsAt:
+          {
+            type: string,
+            format: date-time,
+            example: "2026-12-01T05:30:00.000Z",
+          }
+        status: { $ref: "#/components/schemas/AppointmentStatus" }
+        statusChangedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    AppointmentDetails:
+      description: |
+        Cita con sus campos básicos. Solo para el administrador, incluye además `patient` y `statusChangedBy`;
+        un paciente no los recibe.
+      allOf:
+        - $ref: "#/components/schemas/Appointment"
+        - type: object
+          properties:
+            patient: { $ref: "#/components/schemas/PatientSummary" }
+            statusChangedBy:
+              allOf:
+                - $ref: "#/components/schemas/UserMin"
+              nullable: true
+              description: Usuario que cambió el estado, o `null` si nunca cambió.
+
+    AppointmentPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AppointmentDetails" }
+        nextCursor:
+          type: integer
+          nullable: true
+          description: Cursor de la página siguiente, o `null` si no hay más.
+
+    # ---- Auditoría
+    ReadsLog:
+      type: object
+      properties:
+        id: { type: integer }
+        actor: { $ref: "#/components/schemas/UserBase" }
+        action: { type: string, enum: [READ, LIST, SEARCH] }
+        entity: { type: string, example: Appointment }
+        entityId: { type: integer, nullable: true }
+        query:
+          type: object
+          nullable: true
+          description: Filtros usados en la consulta, si los hubo.
+        ip: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    ReadsLogPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ReadsLog" }
+        nextCursor:
+          type: integer
+          nullable: true
+          description: Cursor de la página siguiente, o `null` si no hay más.
+
+    ChangesLog:
+      type: object
+      properties:
+        id: { type: integer }
+        actor:
+          allOf:
+            - $ref: "#/components/schemas/UserBase"
+          nullable: true
+          description: Usuario que hizo el cambio, o `null` si no hubo uno identificado (por ejemplo, un registro público).
+        action:
+          { type: string, enum: [CREATE, UPDATE, DELETE, SOFT_DELETE, RESTORE] }
+        entity: { type: string, example: Patient }
+        entityId: { type: integer, nullable: true }
+        changes:
+          type: object
+          nullable: true
+          description: Valores del cambio.
+        ip: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    ChangesLogPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ChangesLog" }
+        nextCursor:
+          type: integer
+          nullable: true
+          description: Cursor de la página siguiente, o `null` si no hay más.
+
+  # -------------------------------------------------------------- RESPUESTAS
+  responses:
+    NoContent:
+      description: Eliminado correctamente. No devuelve contenido.
+    BadRequestLogin:
+      description: Datos de entrada inválidos (`VALIDATION_ERROR`)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            missingFields:
+              summary: Faltan datos
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: Validation failed
+                  details:
+                    - field: identifier
+                      message: Identifier is required.
+                    - field: password
+                      message: Password is required.
+    BadRequestRegister:
+      description: Datos de entrada inválidos (`VALIDATION_ERROR`)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            weakPassword:
+              summary: Contraseña débil
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: Validation failed
+                  details:
+                    - field: password
+                      message: Password must include at least one uppercase letter, at least one number.
+            invalidInsuranceNumber:
+              summary: Número de seguro inválido
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: Validation failed
+                  details:
+                    - field: insuranceNumber
+                      message: Insurance number must follow the format "INS-0001".
+            invalidEmail:
+              summary: Correo inválido
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: Validation failed
+                  details:
+                    - field: email
+                      message: Email must have a valid format.
+    BadRequestId:
+      description: El `id` de la ruta no es válido (`VALIDATION_ERROR`)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            invalidId:
+              summary: Id inválido
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: Validation failed.
+                  details:
+                    - field: id
+                      message: Id must be an integer.
+    BadRequestQuery:
+      description: Parámetros de consulta inválidos (`VALIDATION_ERROR`)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            limitTooHigh:
+              summary: Límite demasiado alto
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: Validation failed.
+                  details:
+                    - field: limit
+                      message: Limit must be at most 100.
+            invalidDate:
+              summary: Fecha inválida
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: Validation failed.
+                  details:
+                    - field: createdFrom
+                      message: "Created From must follow this format: YYYY-MM-DD or YYYY-MM-DDTHH:mm:ssZ (ISO 8601)."
+    BadRequestTimeBlock:
+      description: Datos de entrada inválidos (`VALIDATION_ERROR`)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            invalidRange:
+              summary: Rango inválido
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: Validation failed
+                  details:
+                    - field: endTime
+                      message: End Time must be later than Start Time.
+            invalidFormat:
+              summary: Formato de hora inválido
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: Validation failed
+                  details:
+                    - field: startTime
+                      message: Start Time must follow HH:mm format (24h).
+    BadRequestAvailable:
+      description: "Fecha inválida o fuera de la ventana de reserva (`VALIDATION_ERROR`)"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            invalidDate:
+              summary: "Fecha inválida"
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: "Validation failed."
+                  details:
+                    - field: date
+                      message: "Date must follow this format: YYYY-MM-DD."
+            pastDay:
+              summary: "Día que ya pasó"
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: "Appointments cannot be booked for a day that has already passed."
+            tooFarAhead:
+              summary: "Demasiado lejos"
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: "Appointments can only be booked up to 60 days in advance."
+    BadRequestAppointment:
+      description: "Datos de entrada inválidos o fuera de la ventana de reserva (`VALIDATION_ERROR`)"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            invalidRange:
+              summary: "Rango inválido"
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: "Validation failed"
+                  details:
+                    - field: endsAt
+                      message: "Ends At cannot be earlier than Starts At."
+            pastDay:
+              summary: "Día que ya pasó"
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: "Appointments cannot be booked for a day that has already passed."
+            tooFarAhead:
+              summary: "Demasiado lejos"
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: "Appointments can only be booked up to 60 days in advance."
+    BadRequestUserCreate:
+      description: "Datos de entrada inválidos (`VALIDATION_ERROR`)"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            missingFields:
+              summary: "Faltan datos"
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: "Validation failed"
+                  details:
+                    - field: firstName
+                      message: "First name is required."
+                    - field: email
+                      message: "Email is required."
+            invalidEmail:
+              summary: "Correo inválido"
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: "Validation failed"
+                  details:
+                    - field: email
+                      message: "Email must have a valid format."
+    BadRequestUserUpdate:
+      description: "Datos de entrada inválidos (`VALIDATION_ERROR`)"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            invalidName:
+              summary: "Nombre inválido"
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: "Validation failed."
+                  details:
+                    - field: firstName
+                      message: "First name can only contain letters, spaces, hyphens and apostrophes."
+            invalidEmail:
+              summary: "Correo inválido"
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: "Validation failed."
+                  details:
+                    - field: email
+                      message: "Email must have a valid format."
+    BadRequestPatientCreate:
+      description: "Datos de entrada inválidos (`VALIDATION_ERROR`)"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            missingFields:
+              summary: "Faltan datos"
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: "Validation failed"
+                  details:
+                    - field: insuranceNumber
+                      message: "Insurance number is required."
+                    - field: email
+                      message: "Email is required."
+            invalidInsuranceNumber:
+              summary: "Número de seguro inválido"
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: "Validation failed"
+                  details:
+                    - field: insuranceNumber
+                      message: 'Insurance number must follow the format "INS-0001".'
+    BadRequestPatientUpdate:
+      description: "Datos de entrada inválidos (`VALIDATION_ERROR`)"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            invalidInsuranceNumber:
+              summary: "Número de seguro inválido"
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: "Validation failed."
+                  details:
+                    - field: insuranceNumber
+                      message: 'Insurance number must follow the format "INS-0001".'
+            invalidPreferredName:
+              summary: "Apodo inválido"
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: "Validation failed."
+                  details:
+                    - field: preferredName
+                      message: "Preferred name can only contain letters, numbers, spaces, hyphens and apostrophes."
+            invalidEmail:
+              summary: "Correo inválido"
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: "Validation failed."
+                  details:
+                    - field: email
+                      message: "Email must have a valid format."
+    ForbiddenEditFields:
+      description: "Campos no permitidos (`FORBIDDEN`), rol sin permiso o cambio de contraseña pendiente (`MUST_CHANGE_PASSWORD`)"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            forbiddenFields:
+              summary: "Campo que el rol no puede editar"
+              value:
+                error:
+                  code: FORBIDDEN
+                  message: "You are not allowed to edit some of these fields."
+                  details:
+                    - field: firstName
+                      message: "You cannot edit firstName."
+            forbidden:
+              summary: "Rol sin permiso"
+              value:
+                error:
+                  code: FORBIDDEN
+                  message: "You do not have permission to do this."
+            mustChangePassword:
+              summary: "Cambio de contraseña pendiente"
+              value:
+                error:
+                  code: MUST_CHANGE_PASSWORD
+                  message: "You must change your password before continuing."
+    ForbiddenSelfDeactivate:
+      description: "Sin permiso (`FORBIDDEN`): rol sin permiso, intento de desactivar la propia cuenta o cambio de contraseña pendiente"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            selfDeactivate:
+              summary: "Desactivar la propia cuenta"
+              value:
+                error:
+                  code: FORBIDDEN
+                  message: "You cannot deactivate your own account."
+            forbidden:
+              summary: "Rol sin permiso"
+              value:
+                error:
+                  code: FORBIDDEN
+                  message: "You do not have permission to do this."
+            mustChangePassword:
+              summary: "Cambio de contraseña pendiente"
+              value:
+                error:
+                  code: MUST_CHANGE_PASSWORD
+                  message: "You must change your password before continuing."
+    ForbiddenSelfDelete:
+      description: "Sin permiso (`FORBIDDEN`): rol sin permiso, intento de eliminar la propia cuenta o cambio de contraseña pendiente"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            selfDelete:
+              summary: "Eliminar la propia cuenta"
+              value:
+                error:
+                  code: FORBIDDEN
+                  message: "You cannot delete your own account."
+            forbidden:
+              summary: "Rol sin permiso"
+              value:
+                error:
+                  code: FORBIDDEN
+                  message: "You do not have permission to do this."
+            mustChangePassword:
+              summary: "Cambio de contraseña pendiente"
+              value:
+                error:
+                  code: MUST_CHANGE_PASSWORD
+                  message: "You must change your password before continuing."
+    ForbiddenCancel:
+      description: "Sin permiso (`FORBIDDEN`): rol sin permiso, corregir un `NO_SHOW` sin ser administrador o cambio de contraseña pendiente"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            noShow:
+              summary: "Corregir un NO_SHOW"
+              value:
+                error:
+                  code: FORBIDDEN
+                  message: "Only an admin can correct a no-show."
+            forbidden:
+              summary: "Rol sin permiso"
+              value:
+                error:
+                  code: FORBIDDEN
+                  message: "You do not have permission to do this."
+            mustChangePassword:
+              summary: "Cambio de contraseña pendiente"
+              value:
+                error:
+                  code: MUST_CHANGE_PASSWORD
+                  message: "You must change your password before continuing."
+    NotFoundUser:
+      description: "Usuario no encontrado (`NOT_FOUND`)"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            notFound:
+              summary: "No existe"
+              value:
+                error:
+                  code: NOT_FOUND
+                  message: "User not found."
+    NotFoundAdmin:
+      description: "Administrador no encontrado (`NOT_FOUND`)"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            notFound:
+              summary: "No existe"
+              value:
+                error:
+                  code: NOT_FOUND
+                  message: "Admin not found"
+    NotFoundPatient:
+      description: "Paciente no encontrado (`NOT_FOUND`)"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            notFound:
+              summary: "No existe"
+              value:
+                error:
+                  code: NOT_FOUND
+                  message: "Patient not found."
+    NotFoundAppointment:
+      description: "Cita no encontrado (`NOT_FOUND`)"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            notFound:
+              summary: "No existe"
+              value:
+                error:
+                  code: NOT_FOUND
+                  message: "Appointment not found."
+    NotFoundTimeBlock:
+      description: "Bloque horario no encontrado (`NOT_FOUND`)"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            notFound:
+              summary: "No existe"
+              value:
+                error:
+                  code: NOT_FOUND
+                  message: "TimeBlock not found."
+    ConflictFieldTaken:
+      description: "Campo único repetido (`FIELD_TAKEN`)"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            emailTaken:
+              summary: "Correo ya en uso"
+              value:
+                error:
+                  code: FIELD_TAKEN
+                  message: "A unique field is already in use."
+                  details:
+                    - field: email
+                      message: "email is already in use."
+    ConflictFieldTakenPatient:
+      description: "Campo único repetido (`FIELD_TAKEN`)"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            emailTaken:
+              summary: "Correo ya en uso"
+              value:
+                error:
+                  code: FIELD_TAKEN
+                  message: "A unique field is already in use."
+                  details:
+                    - field: email
+                      message: "email is already in use."
+            insuranceTaken:
+              summary: "Número de seguro ya en uso"
+              value:
+                error:
+                  code: FIELD_TAKEN
+                  message: "A unique field is already in use."
+                  details:
+                    - field: insuranceNumber
+                      message: "insuranceNumber is already in use."
+    ConflictTimeBlock:
+      description: "Se solapa con un bloque existente (`CONFLICT`)"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            overlap:
+              summary: "Solapamiento"
+              value:
+                error:
+                  code: CONFLICT
+                  message: "Overlaps with the time block 07:00-07:30."
+    ConflictBookingSlot:
+      description: "El horario no está disponible (`CONFLICT`). El mensaje es el mismo si el bloque no existe, ya tiene una cita o queda fuera de la ventana de reserva."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            notAvailable:
+              summary: "Bloque no disponible (cualquier causa)"
+              value:
+                error:
+                  code: CONFLICT
+                  message: "The selected time block is not available."
+            raceCondition:
+              summary: "Dos peticiones simultáneas por el mismo bloque"
+              value:
+                error:
+                  code: CONFLICT
+                  message: "The selected time block is no longer available."
+    ConflictCancel:
+      description: "La cita no se puede cancelar (`CONFLICT`)"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            invalidTransition:
+              summary: "Estado final"
+              value:
+                error:
+                  code: CONFLICT
+                  message: "Cannot change status from COMPLETED to CANCELLED."
+            tooLate:
+              summary: "Poca anticipación"
+              value:
+                error:
+                  code: CONFLICT
+                  message: "Appointments must be cancelled at least 72 hours (3 days) in advance."
+    ConflictComplete:
+      description: "La cita no se puede completar (`CONFLICT`)"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            invalidTransition:
+              summary: "Estado final"
+              value:
+                error:
+                  code: CONFLICT
+                  message: "Cannot change status from CANCELLED to COMPLETED."
+            dayNotStarted:
+              summary: "El día de la cita no ha empezado"
+              value:
+                error:
+                  code: CONFLICT
+                  message: "The appointment day has not started yet."
+    BadRequestMyPatientUpdate:
+      description: "Datos de entrada inválidos (`VALIDATION_ERROR`)"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            invalidPreferredName:
+              summary: "Apodo inválido"
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: "Validation failed."
+                  details:
+                    - field: preferredName
+                      message: "Preferred name can only contain letters, numbers, spaces, hyphens and apostrophes."
+            invalidEmail:
+              summary: "Correo inválido"
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: "Validation failed."
+                  details:
+                    - field: email
+                      message: "Email must have a valid format."
+    ForbiddenEditFieldsPatient:
+      description: "Campos no permitidos (`FORBIDDEN`), rol sin permiso o cambio de contraseña pendiente (`MUST_CHANGE_PASSWORD`)"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            forbiddenFields:
+              summary: "Campo que el paciente no puede editar"
+              value:
+                error:
+                  code: FORBIDDEN
+                  message: "You are not allowed to edit some of these fields."
+                  details:
+                    - field: insuranceNumber
+                      message: "You cannot edit insuranceNumber."
+            forbidden:
+              summary: "Rol sin permiso"
+              value:
+                error:
+                  code: FORBIDDEN
+                  message: "You do not have permission to do this."
+            mustChangePassword:
+              summary: "Cambio de contraseña pendiente"
+              value:
+                error:
+                  code: MUST_CHANGE_PASSWORD
+                  message: "You must change your password before continuing."
+    Unauthorized:
+      description: Token ausente, inválido o expirado (`TOKEN_MISSING` o `TOKEN_INVALID`)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            tokenMissing:
+              summary: Sin token
+              value:
+                error:
+                  code: TOKEN_MISSING
+                  message: Access denied, no token provided.
+            tokenInvalid:
+              summary: Token inválido o expirado
+              value:
+                error:
+                  code: TOKEN_INVALID
+                  message: Invalid or expired token.
+    Forbidden:
+      description: Sin permiso para esta acción (`FORBIDDEN`), o debes cambiar tu contraseña (`MUST_CHANGE_PASSWORD`)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          examples:
+            forbidden:
+              summary: Rol sin permiso
+              value:
+                error:
+                  code: FORBIDDEN
+                  message: You do not have permission to do this.
+            mustChangePassword:
+              summary: Cambio de contraseña pendiente
+              value:
+                error:
+                  code: MUST_CHANGE_PASSWORD
+                  message: You must change your password before continuing.
+    TooManyRequests:
+      description: Demasiadas peticiones (`RATE_LIMITED`)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error:
+              code: RATE_LIMITED
+              message: Too many requests. Please try again later.

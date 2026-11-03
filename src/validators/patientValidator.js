@@ -4,10 +4,10 @@ const { VALIDATION_ERROR } = require("../constants/errorCodes");
 const { fieldChecker } = require("./validatorUtils");
 const {
   validateString,
-  validateBoolean,
   validateSearch,
   validateLimit,
   validateIntegerParam,
+  validateBooleanParam,
 } = require("./commonValidator");
 
 const {
@@ -93,7 +93,7 @@ exports.listPatientsValidator = (query) => {
   check("preferredName", validateString(preferredName, "Preferred name"));
   check(
     "hasPreferredName",
-    validateBoolean(hasPreferredName, "Has preferred name"),
+    validateBooleanParam(hasPreferredName, "Has preferred name"),
   );
 
   check("limit", validateLimit(limit));
