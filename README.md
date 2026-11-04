@@ -35,6 +35,58 @@ API REST para la gestión de citas médicas: registro de pacientes, bloques hora
 - **Paginación por cursor** en los listados.
 - **Rate limiting** por IP, por cuenta y por usuario en registro, login, cambio de contraseña, listados y creación de pacientes.
 
+## Arquitectura
+
+La API es un **monolito en capas**: una sola aplicación Express que se despliega como una unidad, con la base de datos PostgreSQL como servicio aparte. En conjunto es una arquitectura cliente-servidor de tres niveles: clientes HTTP, API y base de datos.
+
+```mermaid
+flowchart LR
+    C["Clientes<br/>Swagger UI, Postman o cualquier app HTTP"]
+    subgraph Render["Render"]
+        API["API REST<br/>Node.js + Express 5"]
+    end
+    DB[("PostgreSQL<br/>Prisma Postgres")]
+    GH["GitHub Actions"]
+
+    C -- "HTTPS + JSON (JWT)" --> API
+    API -- "Prisma + driver pg" --> DB
+    GH -- "migrate deploy" --> DB
+    GH -- "deploy hook" --> API
+```
+
+Cada petición atraviesa las mismas capas, en este orden:
+
+```mermaid
+flowchart LR
+    R["Petición HTTP"] --> L["Rate limiting"]
+    L --> A["Autenticación<br/>(JWT)"]
+    A --> Z["Autorización<br/>por rol"]
+    Z --> V["Validación<br/>de entradas"]
+    V --> Ct["Controlador"]
+    Ct --> S["Servicio<br/>(reglas de negocio)"]
+    S --> P["Prisma"]
+    P --> D[("PostgreSQL")]
+```
+
+Los errores de cualquier capa llegan a un manejador central que los devuelve con un formato único.
+
+| Capa | Carpeta | Responsabilidad |
+| --- | --- | --- |
+| Rutas | `src/routes` | Definen los endpoints y encadenan los middlewares de cada uno |
+| Middlewares | `src/middlewares` | Autenticación, autorización, validación, rate limiting y manejo de errores |
+| Validadores | `src/validators` | Limpian y validan los datos de entrada |
+| Controladores | `src/controllers` | Traducen entre HTTP y los servicios: leen la petición y devuelven la respuesta |
+| Servicios | `src/services` | Reglas de negocio y acceso a datos con Prisma |
+| Tareas programadas | `src/jobs` | Cierre automático diario de citas |
+
+Decisiones de diseño:
+
+- **Monolito**: para el tamaño del proyecto es lo más sencillo de desplegar, probar y depurar. Dividirlo en servicios añadiría complejidad sin un beneficio real.
+- **Capas por tipo de archivo**: separar rutas, controladores y servicios mantiene la lógica de negocio fuera de HTTP. Si el proyecto creciera, se podría reorganizar por módulos de dominio (citas, pacientes, horarios).
+- **Servicios con acceso directo a Prisma**, sin una capa de repositorios intermedia: menos código para un esquema de este tamaño.
+- **API sin estado**: la sesión viaja en un token JWT y no hay sesiones en el servidor. La excepción son los contadores del rate limiting, que viven en memoria.
+- **Integridad en la base de datos**: las restricciones (por ejemplo, impedir citas solapadas) y los triggers de auditoría no dependen de que el código de la aplicación sea correcto.
+
 ## Seguridad
 
 ### Autenticación y sesiones
